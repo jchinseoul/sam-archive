@@ -165,13 +165,13 @@
   const RELEVANCE_SHRINK = 0.45; // 연관도가 1일 때 반지름을 최대 45%까지 줄임
   const TRANSITION_MS = 450;     // 가지가 펼쳐지는 애니메이션 시간
 
-  // 글씨 크기: 루트 36px → 1단계(호수) 20px → 2단계 이하는 전부 16px로 통일
+  // 글씨 크기: 루트 36px → 1단계(호수) 20px → 2단계(세 번째 항목)부터는 13px로 통일
   function fontSizeFor(depth) {
     if (depth === 0) return '36px';
     if (depth === 1) return '20px';
-    return '16px';
+    return '13px';
   }
-  const fontPxFor = (depth) => (depth === 0 ? 36 : depth === 1 ? 20 : 16);
+  const fontPxFor = (depth) => (depth === 0 ? 36 : depth === 1 ? 20 : 13);
 
   // ---------- 라벨 겹침 방지 ----------
   // 라벨은 항상 수평으로 그려지므로, 방사형 레이아웃의 각도 배분만으로는 물리적 겹침을
