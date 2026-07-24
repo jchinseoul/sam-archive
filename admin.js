@@ -99,12 +99,16 @@ async function ghPutText(path, token, text, message, sha) {
   return res.json();
 }
 
-async function ghPutBinaryBase64(path, token, base64Content, message) {
+async function ghPutBinaryBase64(path, token, base64Content, message, attempt = 0) {
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(path)}`, {
     method: 'PUT',
     headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, content: base64Content, branch: BRANCH }),
   });
+  // 같은 브랜치에 다른 커밋이 거의 동시에 겹치면 드물게 409가 날 수 있어, 한 번은 자동으로 다시 시도한다.
+  if (res.status === 409 && attempt === 0) {
+    return ghPutBinaryBase64(path, token, base64Content, message, 1);
+  }
   if (!res.ok) throw new Error(`${path} 업로드 실패 (${res.status}): ${await res.text()}`);
   return res.json();
 }
@@ -782,16 +786,19 @@ els.editSaveBtn.addEventListener('click', async () => {
       await ghPutBinaryBase64(newTarget, token, await fileToBase64(docFile), `Replace document for "${title}"`);
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (imageFiles.length >= 1) {
+      // 여러 장을 동시에 올리면 GitHub 쪽에서 같은 브랜치에 커밋이 충돌(409)해서,
+      // 한 장씩 순서대로 올린다.
       const slug = timestampSlug();
-      setEditStatus(imageFiles.length > 1 ? `이미지 ${imageFiles.length}장 업로드 중...` : '이미지 업로드 중...');
-      const paths = imageFiles.map((file, i) => {
+      const paths = [];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        return `assets/img-${slug}-${i}.${ext}`;
-      });
-      await Promise.all(imageFiles.map(async (file, i) => {
+        const path = `assets/img-${slug}-${i}.${ext}`;
+        setEditStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
         const base64 = await fileToBase64(file);
-        await ghPutBinaryBase64(paths[i], token, base64, `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
-      }));
+        await ghPutBinaryBase64(path, token, base64, `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
+        paths.push(path);
+      }
       let textPath = null;
       if (bodyText) {
         textPath = `assets/text-${slug}.txt`;
@@ -933,17 +940,20 @@ els.form.addEventListener('submit', async (e) => {
     } else if (imageFiles.length >= 1) {
       // 이미지는 개수와 상관없이 항상 gallery.html로 연결한다(1장이어도 동일한 뷰어 사용).
       // 함께 적은 글이 있으면 이미지 옆에 보여줄 설명글로 같이 올린다.
-      // 이미지끼리는 서로 다른 파일이라 한 장씩 순서대로 기다릴 필요가 없어서 동시에 올린다.
+      // GitHub Contents API는 파일 하나당 커밋을 하나씩 만들기 때문에, 여러 장을
+      // 동시에 올리면 같은 브랜치에 동시에 커밋하려다 서로 충돌(409)한다.
+      // 그래서 조금 느리더라도 한 장씩 순서대로 올린다.
       const slug = timestampSlug();
-      setStatus(imageFiles.length > 1 ? `이미지 ${imageFiles.length}장 업로드 중...` : '이미지 업로드 중...');
-      const paths = imageFiles.map((file, i) => {
+      const paths = [];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        return `assets/img-${slug}-${i}.${ext}`;
-      });
-      await Promise.all(imageFiles.map(async (file, i) => {
+        const path = `assets/img-${slug}-${i}.${ext}`;
+        setStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
         const base64 = await fileToBase64(file);
-        await ghPutBinaryBase64(paths[i], token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
-      }));
+        await ghPutBinaryBase64(path, token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
+        paths.push(path);
+      }
       let textPath = null;
       if (bodyText) {
         textPath = `assets/text-${slug}.txt`;
