@@ -19,6 +19,7 @@
 - 2025
   - 게시물
     - [2025-02-06](gallery.html?imgs=assets%2Fimg-20260725-021354-xu3xa-0.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-1.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-2.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-3.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-4.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-5.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-6.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-7.jpg&text=assets%2Ftext-20260725-021354-xu3xa.txt)
+    - [2025-03-01](gallery.html?imgs=assets%2Fimg-20260725-022546-4ajk0-0.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-1.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-2.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-3.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-4.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-5.jpg%2Cassets%2Fimg-20260725-022546-4ajk0-6.jpg&text=assets%2Ftext-20260725-022546-4ajk0.txt)
 - 2026
   - 7월
     - 공지사항
