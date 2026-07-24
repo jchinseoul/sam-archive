@@ -975,11 +975,14 @@ els.form.addEventListener('submit', async (e) => {
       }
     }
 
-    // 빨간 점 배지 기록은 게시물이 이미 다 올라간 뒤의 부가 기능이라, 완료 메시지를
-    // 기다리게 하지 않고 백그라운드로 넘긴다(실패해도 게시물 자체엔 지장 없음).
-    markUpdated([level1, level2, level3].filter(Boolean), token).catch((badgeErr) => {
+    // 배경 처리로 두면 완료 메시지를 보자마자 탭을 닫을 때 이 요청이 끊겨 배지가
+    // 아예 안 남을 수 있어서, 조금 기다리더라도 여기서 끝까지 마친다.
+    setStatus('업데이트 표시 기록 중...');
+    try {
+      await markUpdated([level1, level2, level3].filter(Boolean), token);
+    } catch (badgeErr) {
       console.warn('업데이트 배지 기록 실패:', badgeErr);
-    });
+    }
 
     setStatus(`완료! "${[level1, level2, level3].filter(Boolean).join(' > ')} > ${title}" 게시물이 추가됐습니다.\n1분 정도 후 사이트에 반영됩니다.`, 'ok');
 
