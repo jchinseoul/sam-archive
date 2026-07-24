@@ -21,11 +21,30 @@ const els = {
   level2New: document.getElementById('level2New'),
   title: document.getElementById('title'),
   imageFile: document.getElementById('imageFile'),
+  videoFile: document.getElementById('videoFile'),
+  videoUrl: document.getElementById('videoUrl'),
+  sizeWarning: document.getElementById('sizeWarning'),
   bodyText: document.getElementById('bodyText'),
   form: document.getElementById('postForm'),
   submitBtn: document.getElementById('submitBtn'),
   status: document.getElementById('status'),
 };
+
+// GitHub Contents API는 파일 하나당 사실상 100MB가 한계이고, 그보다 훨씬 작아도
+// 저장소가 무거워지므로 이 이상이면 경고만 보여준다(업로드 자체는 막지 않음).
+const VIDEO_WARN_BYTES = 15 * 1024 * 1024; // 15MB
+
+els.videoFile.addEventListener('change', () => {
+  const file = els.videoFile.files[0];
+  if (!file) { els.sizeWarning.style.display = 'none'; return; }
+  if (file.size > VIDEO_WARN_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    els.sizeWarning.textContent = `⚠️ 이 영상은 ${mb}MB입니다. GitHub 저장소에 큰 파일을 계속 올리면 저장소가 무거워질 수 있어요. 그래도 업로드는 진행됩니다.`;
+    els.sizeWarning.style.display = 'block';
+  } else {
+    els.sizeWarning.style.display = 'none';
+  }
+});
 
 // ---------- GitHub API 헬퍼 ----------
 function ghHeaders(token) {
@@ -261,6 +280,8 @@ els.form.addEventListener('submit', async (e) => {
   const level2 = els.level2Select.value === NEW_OPTION ? els.level2New.value.trim() : els.level2Select.value;
   const title = els.title.value.trim();
   const imageFile = els.imageFile.files[0];
+  const videoFile = els.videoFile.files[0];
+  const videoUrl = els.videoUrl.value.trim();
   const bodyText = els.bodyText.value.trim();
 
   if (!level1) { setStatus('1단계 항목 이름을 입력해주세요.', 'error'); return; }
@@ -277,25 +298,34 @@ els.form.addEventListener('submit', async (e) => {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
     }
 
-    let assetPath = null;
+    // 여러 개를 채웠다면 영상 링크 → 영상 파일 → 이미지 → 글 순서로 하나만 사용한다.
+    let linkTarget = null;
 
-    if (imageFile) {
+    if (videoUrl) {
+      linkTarget = videoUrl;
+    } else if (videoFile) {
+      const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
+      linkTarget = `assets/video-${timestampSlug()}.${ext}`;
+      setStatus('영상 업로드 중... (용량에 따라 시간이 걸릴 수 있습니다)');
+      const base64 = await fileToBase64(videoFile);
+      await ghPutBinaryBase64(linkTarget, token, base64, `Add video for "${title}"`);
+    } else if (imageFile) {
       const ext = (imageFile.name.split('.').pop() || 'jpg').toLowerCase();
-      assetPath = `assets/img-${timestampSlug()}.${ext}`;
+      linkTarget = `assets/img-${timestampSlug()}.${ext}`;
       setStatus('이미지 업로드 중...');
       const base64 = await fileToBase64(imageFile);
-      await ghPutBinaryBase64(assetPath, token, base64, `Add image for "${title}"`);
+      await ghPutBinaryBase64(linkTarget, token, base64, `Add image for "${title}"`);
     } else if (bodyText) {
-      assetPath = `assets/post-${timestampSlug()}.txt`;
+      linkTarget = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
-      await ghPutText(assetPath, token, bodyText, `Add post text for "${title}"`);
+      await ghPutText(linkTarget, token, bodyText, `Add post text for "${title}"`);
     }
 
     setStatus('archive.md 갱신 중...');
     const current = await ghGetFile('archive.md', token);
     if (!current) throw new Error('archive.md 파일을 찾을 수 없습니다.');
     const currentText = b64DecodeUtf8(current.content);
-    const leafLine = assetPath ? `- [${title}](${assetPath})` : `- ${title}`;
+    const leafLine = linkTarget ? `- [${title}](${linkTarget})` : `- ${title}`;
     const updatedText = insertPost(currentText, { level1, level2, leafLine });
 
     await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${level1} / ${level2}`, current.sha);
@@ -304,6 +334,9 @@ els.form.addEventListener('submit', async (e) => {
 
     els.title.value = '';
     els.imageFile.value = '';
+    els.videoFile.value = '';
+    els.videoUrl.value = '';
+    els.sizeWarning.style.display = 'none';
     els.bodyText.value = '';
     els.level1New.value = '';
     els.level2New.value = '';

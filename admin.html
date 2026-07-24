@@ -67,6 +67,8 @@
       details.help summary { cursor: pointer; }
       a.back { color: var(--fg); text-decoration: none; opacity: .7; font-size: .85rem; }
       a.back:hover { opacity: 1; }
+      .hint { font-size: .8rem; opacity: .65; margin: -.5rem 0 .9rem; }
+      #sizeWarning { font-size: .85rem; color: #c0392b; margin: -.5rem 0 .9rem; display: none; }
     </style>
   </head>
   <body>
@@ -131,13 +133,23 @@
             <span>제목</span>
             <input type="text" id="title" placeholder="마인드맵에 표시될 제목" required />
           </label>
+          <p class="hint">아래 중 하나만 채우면 됩니다. 여러 개를 채우면 영상 링크 → 영상 파일 → 이미지 → 글 순서로 하나만 사용됩니다.</p>
           <label>
             <span>이미지 (선택)</span>
             <input type="file" id="imageFile" accept="image/*" />
           </label>
           <label>
+            <span>영상 파일 (선택 — 용량이 작고 짧은 영상 권장, 저장소에 직접 저장됨)</span>
+            <input type="file" id="videoFile" accept="video/*" />
+          </label>
+          <p id="sizeWarning"></p>
+          <label>
+            <span>영상 링크 (선택 — 유튜브·인스타그램 등 이미 올라가 있는 영상 URL)</span>
+            <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+          </label>
+          <label>
             <span>글 내용 (선택 — 입력하면 텍스트 파일로 저장돼서 클릭 시 열립니다)</span>
-            <textarea id="bodyText" rows="6" placeholder="이미지 없이 글만 올릴 때 사용"></textarea>
+            <textarea id="bodyText" rows="6" placeholder="이미지·영상 없이 글만 올릴 때 사용"></textarea>
           </label>
         </fieldset>
 
