@@ -1,5 +1,5 @@
 // ============================================================
-// 문학회 매거진 아카이브 — 중심에서 왼쪽·오른쪽·아래로 펼쳐지는 부채꼴 마인드맵
+// 문학회 매거진 아카이브 — SAM ARCHIVE를 중심으로 사방(360도)에 뻗어나가는 마인드맵
 // markmap 대신 d3.hierarchy + d3.tree(방사형)를 직접 사용합니다.
 // 앞으로 이 파일은 다시 건드릴 필요가 없습니다. (수정 대상은 archive.md만)
 // ============================================================
@@ -7,7 +7,7 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 170;                // 부모-자식 간 반지름 간격 (깊이 방향)
+  const NODE_DY = 110;                // 부모-자식 간 반지름 간격 (깊이 방향, 전체적으로 짧게)
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
@@ -57,10 +57,12 @@
 
   const data = parseMarkdown(markdown);
 
-  // ---------- 2. d3 계층 + 트리 레이아웃 (부채꼴: 오른쪽→아래→왼쪽으로 반원 펼침) ----------
+  // ---------- 2. d3 계층 + 트리 레이아웃 (SAM ARCHIVE를 중심으로 사방 360도 펼침) ----------
   const root = d3.hierarchy(data);
-  // 각도(x)만 0~PI로 배분받고, 반지름(y)은 아래에서 depth 기준으로 직접 계산한다.
-  const treeLayout = d3.tree().size([Math.PI, 1]);
+  // 각도(x)만 0~2π로 배분받고, 반지름(y)은 아래에서 depth 기준으로 직접 계산한다.
+  const treeLayout = d3.tree()
+    .size([2 * Math.PI, 1])
+    .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth);
 
   // 접기 전에 "원래 하위 트리 크기"를 노드마다 미리 저장해둔다 (자기 자신 포함).
   // 나중에 접혔다 펼쳐졌다 해도 이 값은 안 바뀌어야 하므로 collapseBeyond보다 먼저 계산.
@@ -100,7 +102,7 @@
       1.4
     );
     const tx = svgRect.width / 2 - scale * (bounds.x + bounds.width / 2);
-    const ty = 50 - scale * bounds.y; // 뿌리를 상단 근처에 고정
+    const ty = svgRect.height / 2 - scale * (bounds.y + bounds.height / 2); // 사방으로 퍼지므로 화면 정중앙에 고정
 
     svg.transition().duration(400).call(
       zoomBehavior.transform,
@@ -109,8 +111,8 @@
   }
 
   // ---------- 4. 렌더링 ----------
-  // 극좌표(d.x=각도, d.y=반지름) → 화면 좌표 변환. 각도는 오른쪽(π/2)에서
-  // 시작해 아래(π)를 지나 왼쪽(3π/2)까지, 위쪽으로는 절대 뻗지 않는 반원.
+  // 극좌표(d.x=각도, d.y=반지름) → 화면 좌표 변환. 각도가 0~2π 전체를 돌며
+  // SAM ARCHIVE를 중심으로 사방(위·아래·좌·우 전부)에 가지가 뻗는다.
   const cartesianX = (d) => d.y * Math.sin(d.x);
   const cartesianY = (d) => -d.y * Math.cos(d.x);
   const nodeTransform = (d) => `translate(${cartesianX(d)},${cartesianY(d)})`;
@@ -139,8 +141,16 @@
     return Math.min(1, d.__fullSize / d.parent.__fullSize);
   }
   const RELEVANCE_SHRINK = 0.45; // 연관도가 1일 때 반지름을 최대 45%까지 줄임
+  const TRANSITION_MS = 450;     // 가지가 펼쳐지는 애니메이션 시간
 
-  function update() {
+  // 글씨 크기: 루트 36px → 1단계(호수) 20px → 2단계 이하는 전부 16px로 통일
+  function fontSizeFor(depth) {
+    if (depth === 0) return '36px';
+    if (depth === 1) return '20px';
+    return '16px';
+  }
+
+  function update(source) {
     treeLayout(root);
     root.each((d) => {
       const key = d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
@@ -148,26 +158,34 @@
       const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * NODE_DY * RADIUS_JITTER;
       const rel = relevance(d);
       const baseRadius = d.depth * NODE_DY * (1 - rel * RELEVANCE_SHRINK);
-      d.x = d.x + Math.PI / 2 + angleJitter; // [0, π] → [π/2, 3π/2] (오른쪽 → 아래 → 왼쪽) + 미세한 각도 흔들림
+      d.x = d.x + angleJitter; // 0~2π 그대로 사방으로 고르게 분배 + 미세한 각도 흔들림
       d.y = d.depth === 0 ? 0 : Math.max(baseRadius + radiusJitter, NODE_DY * 0.4); // 연관도가 높을수록 가지가 짧아짐
     });
 
     const nodes = root.descendants();
     const links = root.links();
+    // 새로 나타나거나 사라지는 가지·글자는 클릭한 노드(source)의 현재 위치에서
+    // 자라나거나 그 자리로 접혀 들어가는 것처럼 애니메이션한다.
+    const origin = { x: source.x, y: source.y };
 
     // 가지(선)
-    g.selectAll('path.link')
-      .data(links, (d) => d.target.data.name + '-' + d.target.depth + '-' + (d.target.parent ? d.target.parent.data.name : ''))
-      .join(
-        (enter) => enter.append('path')
-          .attr('class', 'link')
-          .attr('stroke', (d) => colorOf(d.target))
-          .attr('d', radialLink),
-        (update) => update
-          .attr('stroke', (d) => colorOf(d.target))
-          .attr('d', radialLink),
-        (exit) => exit.remove()
-      );
+    const link = g.selectAll('path.link')
+      .data(links, (d) => d.target.data.name + '-' + d.target.depth + '-' + (d.target.parent ? d.target.parent.data.name : ''));
+
+    const linkEnter = link.enter().append('path')
+      .attr('class', 'link')
+      .attr('stroke', (d) => colorOf(d.target))
+      .attr('d', radialLink({ source: origin, target: origin }));
+
+    linkEnter.merge(link)
+      .transition().duration(TRANSITION_MS)
+      .attr('stroke', (d) => colorOf(d.target))
+      .attr('d', radialLink);
+
+    link.exit()
+      .transition().duration(TRANSITION_MS)
+      .attr('d', radialLink({ source: origin, target: origin }))
+      .remove();
 
     // 노드(텍스트만)
     const node = g.selectAll('g.node')
@@ -175,7 +193,7 @@
 
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node')
-      .attr('transform', nodeTransform)
+      .attr('transform', nodeTransform(origin))
       .style('cursor', 'pointer')
       .on('click', (_event, d) => {
         if (d.data.url) {
@@ -189,7 +207,7 @@
           d.children = d._children;
           d._children = null;
         }
-        update();
+        update(d);
         fit();
       });
 
@@ -197,17 +215,27 @@
       .attr('class', 'node-label')
       .attr('dy', '-1.1em')
       .attr('text-anchor', 'middle')
+      .style('font-size', (d) => fontSizeFor(d.depth))
+      .style('opacity', 0)
       .text((d) => d.data.name);
 
-    node.merge(nodeEnter)
+    const nodeMerge = nodeEnter.merge(node);
+    nodeMerge.transition().duration(TRANSITION_MS)
       .attr('transform', nodeTransform);
+    nodeMerge.select('text')
+      .style('font-size', (d) => fontSizeFor(d.depth))
+      .text((d) => d.data.name)
+      .transition().duration(TRANSITION_MS)
+      .style('opacity', 1);
 
-    node.select('text').text((d) => d.data.name);
-
-    node.exit().remove();
+    node.exit()
+      .transition().duration(TRANSITION_MS)
+      .attr('transform', nodeTransform(origin))
+      .style('opacity', 0)
+      .remove();
   }
 
-  update();
+  update(root);
   requestAnimationFrame(fit);
   window.addEventListener('resize', fit);
   document.getElementById('fitBtn').addEventListener('click', fit);
