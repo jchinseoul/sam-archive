@@ -20,6 +20,28 @@
   const res = await fetch('archive.md', { cache: 'no-store' });
   const markdown = await res.text();
 
+  // updates.json: admin.html에서 글을 올릴 때마다 "이 카테고리가 방금 업데이트됐다"고
+  // 기록해두는 파일. 없어도(아직 한 번도 안 썼으면) 에러 없이 그냥 빈 목록으로 취급한다.
+  const NEW_BADGE_MS = 7 * 24 * 60 * 60 * 1000; // 7일 동안 빨간 점 표시
+  let lastUpdatedAt = new Map();
+  try {
+    const updatesRes = await fetch('updates.json', { cache: 'no-store' });
+    if (updatesRes.ok) {
+      const list = await updatesRes.json();
+      list.forEach((entry) => {
+        if (!entry || !entry.name || typeof entry.at !== 'number') return;
+        const prev = lastUpdatedAt.get(entry.name);
+        if (!prev || entry.at > prev) lastUpdatedAt.set(entry.name, entry.at);
+      });
+    }
+  } catch {
+    // updates.json이 없거나 형식이 이상해도 배지만 안 보일 뿐, 마인드맵 자체는 정상 작동해야 한다.
+  }
+  function isRecentlyUpdated(name) {
+    const at = lastUpdatedAt.get(name);
+    return typeof at === 'number' && Date.now() - at < NEW_BADGE_MS;
+  }
+
   function parseMarkdown(md) {
     const lines = md.split('\n');
     const rootLine = lines.find((l) => l.trim().startsWith('#'));
@@ -227,6 +249,28 @@
       .text((d) => d.data.name)
       .transition().duration(TRANSITION_MS)
       .style('opacity', 1);
+
+    // 최근 업데이트된 카테고리 글자 오른쪽 위에 빨간 점 표시
+    nodeMerge.each(function (d) {
+      const nodeGroup = d3.select(this);
+      let badge = nodeGroup.select('circle.new-badge');
+      if (isRecentlyUpdated(d.data.name)) {
+        const textBBox = this.querySelector('text').getBBox();
+        const bx = textBBox.x + textBBox.width + 2;
+        const by = textBBox.y;
+        if (badge.empty()) {
+          badge = nodeGroup.append('circle')
+            .attr('class', 'new-badge')
+            .attr('r', 4)
+            .style('fill', '#e0483e')
+            .style('stroke', 'var(--bg)')
+            .style('stroke-width', '1.5px');
+        }
+        badge.attr('cx', bx).attr('cy', by);
+      } else if (!badge.empty()) {
+        badge.remove();
+      }
+    });
 
     node.exit()
       .transition().duration(TRANSITION_MS)

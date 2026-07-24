@@ -21,6 +21,7 @@ const els = {
   level2New: document.getElementById('level2New'),
   title: document.getElementById('title'),
   imageFile: document.getElementById('imageFile'),
+  docFile: document.getElementById('docFile'),
   videoFile: document.getElementById('videoFile'),
   videoUrl: document.getElementById('videoUrl'),
   sizeWarning: document.getElementById('sizeWarning'),
@@ -28,6 +29,8 @@ const els = {
   form: document.getElementById('postForm'),
   submitBtn: document.getElementById('submitBtn'),
   status: document.getElementById('status'),
+  refreshLevelsBtn: document.getElementById('refreshLevelsBtn'),
+  levelLoadStatus: document.getElementById('levelLoadStatus'),
 };
 
 // GitHub Contents API는 파일 하나당 사실상 100MB가 한계이고, 그보다 훨씬 작아도
@@ -106,6 +109,36 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// ---------- 최근 업데이트 기록 (마인드맵에 빨간 점으로 표시됨) ----------
+const UPDATES_FILE = 'updates.json';
+const UPDATES_KEEP_DAYS = 30; // 이보다 오래된 기록은 파일이 계속 커지지 않도록 정리
+
+// 이번에 글을 추가한 카테고리(1단계·2단계 이름)를 "방금 업데이트됨"으로 기록한다.
+// app.js가 이 파일을 읽어서, 최근 며칠 안에 올라온 카테고리 글자에 빨간 점을 붙인다.
+async function markUpdated(names, token) {
+  const existing = await ghGetFile(UPDATES_FILE, token);
+  let list = [];
+  if (existing) {
+    try { list = JSON.parse(b64DecodeUtf8(existing.content)); } catch { list = []; }
+  }
+  const cutoff = Date.now() - UPDATES_KEEP_DAYS * 24 * 60 * 60 * 1000;
+  list = list.filter((entry) => entry && typeof entry.at === 'number' && entry.at > cutoff);
+
+  const now = Date.now();
+  names.forEach((name) => {
+    if (!name) return;
+    list.push({ name, at: now });
+  });
+
+  await ghPutText(
+    UPDATES_FILE,
+    token,
+    JSON.stringify(list),
+    `Mark updated: ${names.filter(Boolean).join(', ')}`,
+    existing ? existing.sha : undefined,
+  );
 }
 
 // ---------- archive.md 파싱 (호수/유형 같은 고정 이름 없이, 들여쓰기만으로 계층 판단) ----------
@@ -233,6 +266,11 @@ function updateLevel2Options() {
   els.level2NewWrap.hidden = els.level2Select.value !== NEW_OPTION;
 }
 
+function setLevelLoadStatus(msg, kind) {
+  els.levelLoadStatus.textContent = msg;
+  els.levelLoadStatus.style.color = kind === 'error' ? '#c0392b' : kind === 'ok' ? 'var(--accent)' : '';
+}
+
 async function refreshLevels() {
   const token = els.token.value.trim();
   if (!token) {
@@ -240,14 +278,20 @@ async function refreshLevels() {
     fillSelectWithNewOption(els.level1Select, []);
     updateLevel1NewVisibility();
     updateLevel2Options();
+    setLevelLoadStatus('토큰을 입력하면 기존 1단계/2단계 항목을 불러옵니다.');
     return;
   }
+  setLevelLoadStatus('항목 불러오는 중...');
   const file = await ghGetFile('archive.md', token);
   levelMap = file ? parseLevels(b64DecodeUtf8(file.content)) : new Map();
   const prevLevel1 = els.level1Select.value;
   fillSelectWithNewOption(els.level1Select, [...levelMap.keys()], prevLevel1);
   updateLevel1NewVisibility();
   updateLevel2Options();
+  setLevelLoadStatus(
+    levelMap.size ? `1단계 항목 ${levelMap.size}개를 불러왔습니다.` : 'archive.md에 1단계 항목이 아직 없습니다 — 새로 추가로 시작하세요.',
+    'ok',
+  );
 }
 
 els.level1Select.addEventListener('change', () => {
@@ -257,16 +301,20 @@ els.level1Select.addEventListener('change', () => {
 els.level2Select.addEventListener('change', () => {
   els.level2NewWrap.hidden = els.level2Select.value !== NEW_OPTION;
 });
-els.token.addEventListener('change', () => {
-  refreshLevels().catch((e) => setStatus(`항목 목록을 불러오지 못했습니다: ${e.message}`, 'error'));
-});
+
+function tryRefreshLevels() {
+  refreshLevels().catch((e) => setLevelLoadStatus(`항목을 불러오지 못했습니다: ${e.message} (토큰의 저장소 선택·Contents 권한을 확인하세요)`, 'error'));
+}
+
+// 붙여넣기 직후, 포커스가 벗어날 때, 수동 새로고침 버튼 — 어느 경우든 놓치지 않게 여러 이벤트에 건다.
+els.token.addEventListener('change', tryRefreshLevels);
+els.token.addEventListener('blur', tryRefreshLevels);
+els.refreshLevelsBtn.addEventListener('click', tryRefreshLevels);
 
 (function init() {
   const saved = localStorage.getItem(TOKEN_STORAGE_KEY);
   if (saved) els.token.value = saved;
-  refreshLevels().catch(() => {
-    // 토큰이 아직 없거나 실패해도 폼 자체는 계속 쓸 수 있게 조용히 무시
-  });
+  tryRefreshLevels();
 })();
 
 // ---------- 제출 ----------
@@ -280,6 +328,7 @@ els.form.addEventListener('submit', async (e) => {
   const level2 = els.level2Select.value === NEW_OPTION ? els.level2New.value.trim() : els.level2Select.value;
   const title = els.title.value.trim();
   const imageFile = els.imageFile.files[0];
+  const docFile = els.docFile.files[0];
   const videoFile = els.videoFile.files[0];
   const videoUrl = els.videoUrl.value.trim();
   const bodyText = els.bodyText.value.trim();
@@ -298,7 +347,7 @@ els.form.addEventListener('submit', async (e) => {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
     }
 
-    // 여러 개를 채웠다면 영상 링크 → 영상 파일 → 이미지 → 글 순서로 하나만 사용한다.
+    // 여러 개를 채웠다면 영상 링크 → 영상 파일 → 문서 파일 → 이미지 → 글 순서로 하나만 사용한다.
     let linkTarget = null;
 
     if (videoUrl) {
@@ -309,6 +358,12 @@ els.form.addEventListener('submit', async (e) => {
       setStatus('영상 업로드 중... (용량에 따라 시간이 걸릴 수 있습니다)');
       const base64 = await fileToBase64(videoFile);
       await ghPutBinaryBase64(linkTarget, token, base64, `Add video for "${title}"`);
+    } else if (docFile) {
+      const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
+      linkTarget = `assets/doc-${timestampSlug()}.${ext}`;
+      setStatus('문서 업로드 중...');
+      const base64 = await fileToBase64(docFile);
+      await ghPutBinaryBase64(linkTarget, token, base64, `Add document for "${title}"`);
     } else if (imageFile) {
       const ext = (imageFile.name.split('.').pop() || 'jpg').toLowerCase();
       linkTarget = `assets/img-${timestampSlug()}.${ext}`;
@@ -330,10 +385,19 @@ els.form.addEventListener('submit', async (e) => {
 
     await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${level1} / ${level2}`, current.sha);
 
+    setStatus('업데이트 표시 기록 중...');
+    try {
+      await markUpdated([level1, level2], token);
+    } catch (badgeErr) {
+      // 배지 기록이 실패해도 게시물 자체는 이미 올라갔으니 치명적 오류로 취급하지 않는다.
+      console.warn('업데이트 배지 기록 실패:', badgeErr);
+    }
+
     setStatus(`완료! "${level1} > ${level2} > ${title}" 게시물이 추가됐습니다.\n1분 정도 후 사이트에 반영됩니다.`, 'ok');
 
     els.title.value = '';
     els.imageFile.value = '';
+    els.docFile.value = '';
     els.videoFile.value = '';
     els.videoUrl.value = '';
     els.sizeWarning.style.display = 'none';
