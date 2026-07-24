@@ -150,27 +150,38 @@ const UPDATES_KEEP_DAYS = 30; // 이보다 오래된 기록은 파일이 계속 
 // 이번에 글을 추가한 카테고리(1단계·2단계 이름)를 "방금 업데이트됨"으로 기록한다.
 // app.js가 이 파일을 읽어서, 최근 며칠 안에 올라온 카테고리 글자에 빨간 점을 붙인다.
 async function markUpdated(names, token) {
-  const existing = await ghGetFile(UPDATES_FILE, token);
-  let list = [];
-  if (existing) {
-    try { list = JSON.parse(b64DecodeUtf8(existing.content)); } catch { list = []; }
+  for (let attempt = 0; ; attempt++) {
+    const existing = await ghGetFile(UPDATES_FILE, token);
+    let list = [];
+    if (existing) {
+      try { list = JSON.parse(b64DecodeUtf8(existing.content)); } catch { list = []; }
+    }
+    const cutoff = Date.now() - UPDATES_KEEP_DAYS * 24 * 60 * 60 * 1000;
+    list = list.filter((entry) => entry && typeof entry.at === 'number' && entry.at > cutoff);
+
+    const now = Date.now();
+    names.forEach((name) => {
+      if (!name) return;
+      list.push({ name, at: now });
+    });
+
+    try {
+      await ghPutText(
+        UPDATES_FILE,
+        token,
+        JSON.stringify(list),
+        `Mark updated: ${names.filter(Boolean).join(', ')}`,
+        existing ? existing.sha : undefined,
+      );
+      return;
+    } catch (e) {
+      if (attempt < 3 && /\(409\)/.test(e.message)) {
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
   }
-  const cutoff = Date.now() - UPDATES_KEEP_DAYS * 24 * 60 * 60 * 1000;
-  list = list.filter((entry) => entry && typeof entry.at === 'number' && entry.at > cutoff);
-
-  const now = Date.now();
-  names.forEach((name) => {
-    if (!name) return;
-    list.push({ name, at: now });
-  });
-
-  await ghPutText(
-    UPDATES_FILE,
-    token,
-    JSON.stringify(list),
-    `Mark updated: ${names.filter(Boolean).join(', ')}`,
-    existing ? existing.sha : undefined,
-  );
 }
 
 // ---------- archive.md 파싱 (호수/유형 같은 고정 이름 없이, 들여쓰기만으로 계층 판단) ----------
@@ -305,7 +316,32 @@ function relocateLeaf(freshLines, level1, level2, leaf) {
   const l2 = l1 && findChild(freshLines, l1.idx, l1.indent, level2);
   if (!l2) return null;
   const freshLeaves = collectLeaves(freshLines, l2.idx, l2.indent, []);
-  return freshLeaves.find((l) => l.title === leaf.title && l.path.join(' ') === leaf.path.join(' ')) || null;
+  return freshLeaves.find((l) => l.title === leaf.title && JSON.stringify(l.path) === JSON.stringify(leaf.path)) || null;
+}
+
+// archive.md에 쓰는 모든 곳(추가/수정/삭제)이 공통으로 쓰는 읽기-수정-쓰기 헬퍼.
+// 매번 최신 내용을 다시 읽어와 applyFn으로 고친 뒤 저장하고, 저장이 409로 실패하면
+// (거의 동시에 다른 저장이 겹쳤거나 GitHub 쪽이 아주 짧게 정합성이 안 맞을 때) 조금씩
+// 기다렸다 최신 내용을 다시 읽어와서 재시도한다.
+// applyFn(text) => { text, message } — 게시물을 못 찾는 등 더 진행할 수 없으면 applyFn이
+// 직접 에러를 던지면 되고, 그 에러는 재시도 없이 바로 위로 전달된다.
+async function updateArchiveMd(token, applyFn) {
+  for (let attempt = 0; ; attempt++) {
+    const current = await ghGetFile('archive.md', token);
+    if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
+    const currentText = b64DecodeUtf8(current.content);
+    const built = applyFn(currentText);
+    try {
+      await ghPutText('archive.md', token, built.text, built.message, current.sha);
+      return;
+    } catch (e) {
+      if (attempt < 3 && /\(409\)/.test(e.message)) {
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 // gallery.html?imgs=...&video=...&text=... 링크에서 이미지/영상/설명글 경로를 뽑아낸다.
@@ -623,21 +659,13 @@ async function handleDelete(index, btnEl) {
   btnEl.disabled = true;
   setManageStatus(`"${leaf.title}" 삭제 중...`);
   try {
-    for (let attempt = 0; ; attempt++) {
-      const current = await ghGetFile('archive.md', token);
-      if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
-      const lines = b64DecodeUtf8(current.content).split('\n');
+    await updateArchiveMd(token, (currentText) => {
+      const lines = currentText.split('\n');
       const fresh = relocateLeaf(lines, level1, level2, leaf);
       if (!fresh) throw new Error('게시물을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
       lines.splice(fresh.lineIndex, 1);
-      try {
-        await ghPutText('archive.md', token, lines.join('\n'), `Delete "${leaf.title}"`, current.sha);
-        break;
-      } catch (e) {
-        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
-        throw e;
-      }
-    }
+      return { text: lines.join('\n'), message: `Delete "${leaf.title}"` };
+    });
 
     for (const assetPath of extractAssetPaths(leaf.target)) {
       try { await deleteAsset(assetPath, token); } catch (e) { console.warn('첨부 파일 삭제 실패:', e); }
@@ -834,29 +862,18 @@ els.editSaveBtn.addEventListener('click', async () => {
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     }
 
-    // archive.md는 업로드가 다 끝난 지금 시점에 최신 상태로 다시 읽어와서 고친다 —
-    // 업로드하는 동안(특히 이미지 여러 장) 다른 저장이 먼저 반영됐을 수 있어서,
-    // 미리 읽어둔 sha를 그대로 쓰면 409(충돌) 오류가 난다. 그래도 한 번 더 충돌하면
-    // (거의 동시에 다른 저장이 겹친 경우) 한 번만 재시도한다.
+    // archive.md는 업로드가 다 끝난 지금 시점에 최신 상태로 다시 읽어와서 고친다.
     setEditStatus('archive.md 갱신 중...');
     const editLevel1 = els.manageLevel1Select.value;
     const editLevel2 = els.manageLevel2Select.value;
-    for (let attempt = 0; ; attempt++) {
-      const current = await ghGetFile('archive.md', token);
-      if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
-      const lines = b64DecodeUtf8(current.content).split('\n');
+    await updateArchiveMd(token, (currentText) => {
+      const lines = currentText.split('\n');
       const fresh = relocateLeaf(lines, editLevel1, editLevel2, editingLeaf);
       if (!fresh) throw new Error('게시물을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
       const newLine = `${' '.repeat(fresh.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
       lines[fresh.lineIndex] = newLine;
-      try {
-        await ghPutText('archive.md', token, lines.join('\n'), `Edit "${editingLeaf.title}" -> "${title}"`, current.sha);
-        break;
-      } catch (e) {
-        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
-        throw e;
-      }
-    }
+      return { text: lines.join('\n'), message: `Edit "${editingLeaf.title}" -> "${title}"` };
+    });
 
     for (const oldPath of deleteOldAssets) {
       try { await deleteAsset(oldPath, token); } catch (e) { console.warn('이전 첨부 삭제 실패:', e); }
@@ -979,19 +996,10 @@ els.form.addEventListener('submit', async (e) => {
     setStatus('archive.md 갱신 중...');
     const leafLine = linkTarget ? `- [${title}](${linkTarget})` : `- ${title}`;
     const pathLabel = [level1, level2, level3].filter(Boolean).join(' / ');
-    for (let attempt = 0; ; attempt++) {
-      const current = await ghGetFile('archive.md', token);
-      if (!current) throw new Error('archive.md 파일을 찾을 수 없습니다.');
-      const currentText = b64DecodeUtf8(current.content);
+    await updateArchiveMd(token, (currentText) => {
       const updatedText = insertPost(currentText, { level1, level2, level3: level3 || null, leafLine });
-      try {
-        await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${pathLabel}`, current.sha);
-        break;
-      } catch (e) {
-        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
-        throw e;
-      }
-    }
+      return { text: updatedText, message: `Add "${title}" under ${pathLabel}` };
+    });
 
     // 배경 처리로 두면 완료 메시지를 보자마자 탭을 닫을 때 이 요청이 끊겨 배지가
     // 아예 안 남을 수 있어서, 조금 기다리더라도 여기서 끝까지 마친다.
