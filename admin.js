@@ -292,8 +292,10 @@ function extractAssetPaths(target) {
   if (/^https?:\/\//.test(target)) return [];
   if (target.startsWith('gallery.html?')) {
     const qs = target.split('?')[1] || '';
-    const imgs = (new URLSearchParams(qs).get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
-    return imgs;
+    const sp = new URLSearchParams(qs);
+    const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const textPath = sp.get('text');
+    return textPath ? [...imgs, textPath] : imgs;
   }
   if (target.startsWith('assets/')) return [target];
   return [];
@@ -658,24 +660,24 @@ els.editSaveBtn.addEventListener('click', async () => {
         newTarget = `assets/doc-${timestampSlug()}.${ext}`;
         setEditStatus('문서 업로드 중...');
         await ghPutBinaryBase64(newTarget, token, await fileToBase64(docFile), `Replace document for "${title}"`);
-      } else if (imageFiles.length === 1) {
-        const [file] = imageFiles;
-        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        newTarget = `assets/img-${timestampSlug()}.${ext}`;
-        setEditStatus('이미지 업로드 중...');
-        await ghPutBinaryBase64(newTarget, token, await fileToBase64(file), `Replace image for "${title}"`);
-      } else if (imageFiles.length > 1) {
+      } else if (imageFiles.length >= 1) {
         const slug = timestampSlug();
         const paths = [];
         for (let i = 0; i < imageFiles.length; i++) {
           const file = imageFiles[i];
           const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
           const path = `assets/img-${slug}-${i}.${ext}`;
-          setEditStatus(`이미지 업로드 중... (${i + 1}/${imageFiles.length})`);
+          setEditStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
           await ghPutBinaryBase64(path, token, await fileToBase64(file), `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
           paths.push(path);
         }
         newTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
+        if (bodyText) {
+          const textPath = `assets/text-${slug}.txt`;
+          setEditStatus('설명 글 업로드 중...');
+          await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
+          newTarget += `&text=${encodeURIComponent(textPath)}`;
+        }
       } else if (bodyText) {
         newTarget = `assets/post-${timestampSlug()}.txt`;
         setEditStatus('글 파일 업로드 중...');
@@ -763,28 +765,27 @@ els.form.addEventListener('submit', async (e) => {
       setStatus('문서 업로드 중...');
       const base64 = await fileToBase64(docFile);
       await ghPutBinaryBase64(linkTarget, token, base64, `Add document for "${title}"`);
-    } else if (imageFiles.length === 1) {
-      const [imageFile] = imageFiles;
-      const ext = (imageFile.name.split('.').pop() || 'jpg').toLowerCase();
-      linkTarget = `assets/img-${timestampSlug()}.${ext}`;
-      setStatus('이미지 업로드 중...');
-      const base64 = await fileToBase64(imageFile);
-      await ghPutBinaryBase64(linkTarget, token, base64, `Add image for "${title}"`);
-    } else if (imageFiles.length > 1) {
-      // 2장 이상이면 각각 assets/에 올리고, gallery.html이 옆으로 스크롤하는
-      // 뷰어로 한꺼번에 보여주도록 이미지 경로 목록을 쿼리 문자열로 넘긴다.
+    } else if (imageFiles.length >= 1) {
+      // 이미지는 개수와 상관없이 항상 gallery.html로 연결한다(1장이어도 동일한 뷰어 사용).
+      // 함께 적은 글이 있으면 이미지 옆에 보여줄 설명글로 같이 올린다.
       const slug = timestampSlug();
       const paths = [];
       for (let i = 0; i < imageFiles.length; i++) {
         const file = imageFiles[i];
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
         const path = `assets/img-${slug}-${i}.${ext}`;
-        setStatus(`이미지 업로드 중... (${i + 1}/${imageFiles.length})`);
+        setStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
         const base64 = await fileToBase64(file);
         await ghPutBinaryBase64(path, token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
         paths.push(path);
       }
       linkTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
+      if (bodyText) {
+        const textPath = `assets/text-${slug}.txt`;
+        setStatus('설명 글 업로드 중...');
+        await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
+        linkTarget += `&text=${encodeURIComponent(textPath)}`;
+      }
     } else if (bodyText) {
       linkTarget = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
