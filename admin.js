@@ -389,6 +389,17 @@ async function deleteAsset(path, token) {
   if (!res.ok) throw new Error(`${path} 삭제 실패 (${res.status})`);
 }
 
+// "2025-02-02"처럼 제목이 날짜 형태인지 판단한다.
+function looksLikeDateTitle(title) {
+  return /^\d{4}-\d{2}-\d{2}$/.test((title || '').trim());
+}
+
+// "- [제목](링크)" 또는 "- 제목" 한 줄에서 제목만 뽑아낸다.
+function extractLeafTitle(leafLine) {
+  const m = leafLine.match(/^-\s+\[(.+)\]\(.+\)$/) || leafLine.match(/^-\s+(.*)$/);
+  return m ? (m[1] || '').trim() : '';
+}
+
 function insertPost(mdText, { level1, level2, level3, leafLine }) {
   const lines = mdText.split('\n');
   // 파일 끝의 빈 줄들을 미리 정리해둔다. 그대로 두면 문서의 맨 마지막 블록에
@@ -402,7 +413,24 @@ function insertPost(mdText, { level1, level2, level3, leafLine }) {
 
   const leafIndent = parent.indent + 2;
   const leafEnd = findBlockEnd(lines, parent.idx, parent.indent);
-  lines.splice(leafEnd, 0, `${' '.repeat(leafIndent)}${leafLine}`);
+
+  // 제목이 날짜 형태면, 같은 자리의 다른 날짜 제목들 사이에서 정렬된 위치를 찾는다
+  // (그 외 형태의 제목은 예전처럼 그냥 맨 끝에 추가).
+  let insertAt = leafEnd;
+  const newTitle = extractLeafTitle(leafLine);
+  if (looksLikeDateTitle(newTitle)) {
+    for (let i = parent.idx + 1; i < leafEnd; i++) {
+      if (!lines[i].trim()) continue;
+      if (indentOf(lines[i]) !== leafIndent) continue;
+      const m = lines[i].match(/^\s*-\s+(.*)$/);
+      if (!m) continue;
+      const siblingTitle = extractLeafTitle(`- ${m[1]}`);
+      if (!looksLikeDateTitle(siblingTitle)) continue;
+      if (newTitle < siblingTitle) { insertAt = i; break; }
+    }
+  }
+
+  lines.splice(insertAt, 0, `${' '.repeat(leafIndent)}${leafLine}`);
   return lines.join('\n');
 }
 

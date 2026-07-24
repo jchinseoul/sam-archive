@@ -120,6 +120,12 @@
   const svg = d3.select('#tree');
   const g = svg.append('g');
 
+  // 가지 끝(리프 쪽)에 은은하게 빛나는 효과를 주기 위한 블러 필터.
+  svg.append('defs').append('filter')
+    .attr('id', 'branchGlow')
+    .attr('x', '-200%').attr('y', '-200%').attr('width', '500%').attr('height', '500%')
+    .html('<feGaussianBlur stdDeviation="4" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>');
+
   const zoomBehavior = d3.zoom()
     .scaleExtent([0.3, 3])
     .on('zoom', (event) => g.attr('transform', event.transform));
@@ -329,6 +335,14 @@
         fit();
       });
 
+    // 가지 끝(루트 제외)에 은은하게 빛나는 점을 하나 그린다.
+    nodeEnter.filter((d) => d.depth > 0).append('circle')
+      .attr('class', 'glow-tip')
+      .attr('r', 3)
+      .style('fill', (d) => colorOf(d))
+      .style('filter', 'url(#branchGlow)')
+      .style('opacity', 0);
+
     nodeEnter.append('text')
       .attr('class', 'node-label')
       .attr('dy', '-1.1em')
@@ -340,6 +354,10 @@
     const nodeMerge = nodeEnter.merge(node);
     nodeMerge.transition().duration(TRANSITION_MS)
       .attr('transform', nodeTransform);
+    nodeMerge.select('circle.glow-tip')
+      .style('fill', (d) => colorOf(d))
+      .transition().duration(TRANSITION_MS)
+      .style('opacity', 0.85);
     nodeMerge.select('text')
       .style('font-size', (d) => fontSizeFor(d.depth))
       .text((d) => d.data.name)
