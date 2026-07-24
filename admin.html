@@ -14,9 +14,9 @@
         width: 100%;
       }
       main.admin p.lead {
-        opacity: .75;
-        font-size: .9rem;
-        margin-top: -.5rem;
+        opacity: 0.75;
+        font-size: 0.9rem;
+        margin-top: -0.5rem;
       }
       fieldset {
         border: 1px solid var(--border);
@@ -24,29 +24,52 @@
         padding: 1rem;
         margin: 0 0 1rem;
       }
-      legend { padding: 0 .4rem; opacity: .8; font-size: .85rem; }
-      label { display: block; font-size: .9rem; margin-bottom: .9rem; }
-      label > span { display: block; margin-bottom: .35rem; }
-      label:last-child { margin-bottom: 0; }
+      legend {
+        padding: 0 0.4rem;
+        opacity: 0.8;
+        font-size: 0.85rem;
+      }
+      label {
+        display: block;
+        font-size: 0.9rem;
+        margin-bottom: 0.9rem;
+      }
+      label > span {
+        display: block;
+        margin-bottom: 0.35rem;
+      }
+      label:last-child {
+        margin-bottom: 0;
+      }
       input[type="text"],
       input[type="password"],
       select,
       textarea {
         width: 100%;
-        padding: .55rem .6rem;
+        padding: 0.55rem 0.6rem;
         border-radius: 8px;
         border: 1px solid var(--border);
         background: transparent;
         color: var(--fg);
-        font-size: .95rem;
+        font-size: 0.95rem;
         font-family: inherit;
       }
-      textarea { resize: vertical; }
-      .row { display: flex; align-items: center; gap: .5rem; font-size: .85rem; opacity: .85; }
-      .row input[type="checkbox"] { width: auto; }
+      textarea {
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        opacity: 0.85;
+      }
+      .row input[type="checkbox"] {
+        width: auto;
+      }
       button.primary {
         width: 100%;
-        padding: .7rem;
+        padding: 0.7rem;
         border-radius: 999px;
         border: none;
         background: var(--accent);
@@ -54,43 +77,128 @@
         font-size: 1rem;
         cursor: pointer;
       }
-      button.primary:disabled { opacity: .5; cursor: default; }
+      button.primary:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
       #status {
         margin-top: 1rem;
-        font-size: .9rem;
+        font-size: 0.9rem;
         white-space: pre-wrap;
         word-break: break-all;
       }
-      #status.error { color: #c0392b; }
-      #status.ok { color: var(--accent); }
-      details.help { margin-bottom: 1rem; font-size: .85rem; opacity: .85; }
-      details.help summary { cursor: pointer; }
-      a.back { color: var(--fg); text-decoration: none; opacity: .7; font-size: .85rem; }
-      a.back:hover { opacity: 1; }
-      .hint { font-size: .8rem; opacity: .65; margin: -.5rem 0 .9rem; }
-      #sizeWarning { font-size: .85rem; color: #c0392b; margin: -.5rem 0 .9rem; display: none; }
+      #status.error {
+        color: #c0392b;
+      }
+      #status.ok {
+        color: var(--accent);
+      }
+      details.help {
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+        opacity: 0.85;
+      }
+      details.help summary {
+        cursor: pointer;
+      }
+      a.back {
+        color: var(--fg);
+        text-decoration: none;
+        opacity: 0.7;
+        font-size: 0.85rem;
+      }
+      a.back:hover {
+        opacity: 1;
+      }
+      .hint {
+        font-size: 0.8rem;
+        opacity: 0.65;
+        margin: -0.5rem 0 0.9rem;
+      }
+      #sizeWarning {
+        font-size: 0.85rem;
+        color: #c0392b;
+        margin: -0.5rem 0 0.9rem;
+        display: none;
+      }
+      h2.section-title {
+        font-size: 1rem;
+        margin: 2rem 0 0.75rem;
+      }
+      #manageList {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .manage-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.6rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 0.85rem;
+      }
+      .manage-row .manage-title {
+        flex: 1;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .manage-row .manage-path {
+        display: block;
+        opacity: 0.6;
+        font-size: 0.75rem;
+      }
+      .manage-row button {
+        flex: 0 0 auto;
+        padding: 0.3rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+      .manage-row button.danger {
+        border-color: #c0392b;
+        color: #c0392b;
+      }
+      #editPanel {
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        border-top: 1px dashed var(--border);
+      }
     </style>
   </head>
   <body>
     <header>
-      <h1>📮 SAM ARCHIVE 게시물 올리기</h1>
+      <h1>SAM ARCHIVE 게시물 올리기</h1>
       <a class="back" href="index.html">← 마인드맵으로</a>
     </header>
     <main class="admin">
       <p class="lead">
-        여기서 올린 이미지·글은 GitHub 저장소에 그대로 저장되고, 마인드맵의 골라준 위치 아래에 자동으로 추가됩니다.
-        관리자 전용 페이지이며, archive.md는 호수·유형처럼 고정된 형식이 아니어도 되므로 아래에서 원하는 이름으로 자유롭게 항목을 만들 수 있습니다.
+        여기서 올린 이미지·글은 GitHub 저장소에 그대로 저장되고, 마인드맵의
+        골라준 위치 아래에 자동으로 추가됩니다. 관리자 전용 페이지이며,
+        archive.md는 호수·유형처럼 고정된 형식이 아니어도 되므로 아래에서 원하는
+        이름으로 자유롭게 항목을 만들 수 있습니다.
       </p>
 
       <details class="help">
         <summary>GitHub 토큰은 어떻게 만드나요?</summary>
         <p>
-          GitHub 우측 상단 프로필 → Settings → 맨 아래 <strong>Developer settings</strong> →
-          <strong>Personal access tokens</strong> → <strong>Fine-grained tokens</strong> →
+          GitHub 우측 상단 프로필 → Settings → 맨 아래
+          <strong>Developer settings</strong> →
+          <strong>Personal access tokens</strong> →
+          <strong>Fine-grained tokens</strong> →
           <strong>Generate new token</strong>.<br />
-          Repository access는 <strong>Only select repositories</strong>로 하고 이 저장소만 선택하세요.<br />
-          Permissions → Repository permissions → <strong>Contents: Read and write</strong>로 설정하고 생성하면 됩니다.<br />
-          생성된 토큰을 아래에 붙여넣으세요. 이 토큰은 이 브라우저에만 저장되고 서버로 전송되지 않습니다(GitHub API로 직접 전송).
+          Repository access는 <strong>Only select repositories</strong>로 하고
+          이 저장소만 선택하세요.<br />
+          Permissions → Repository permissions →
+          <strong>Contents: Read and write</strong>로 설정하고 생성하면
+          됩니다.<br />
+          생성된 토큰을 아래에 붙여넣으세요. 이 토큰은 이 브라우저에만 저장되고
+          서버로 전송되지 않습니다(GitHub API로 직접 전송).
         </p>
       </details>
 
@@ -99,22 +207,55 @@
           <legend>GitHub 접속</legend>
           <label>
             <span>Personal Access Token</span>
-            <input type="password" id="token" placeholder="github_pat_..." autocomplete="off" required />
+            <input
+              type="password"
+              id="token"
+              placeholder="github_pat_..."
+              autocomplete="off"
+              required
+            />
           </label>
-          <div class="row" style="justify-content: space-between; margin-top: .5rem;">
-            <span class="row" style="margin:0;">
+          <div
+            class="row"
+            style="justify-content: space-between; margin-top: 0.5rem"
+          >
+            <span class="row" style="margin: 0">
               <input type="checkbox" id="rememberToken" checked />
-              <label for="rememberToken" style="margin:0;">이 브라우저에 토큰 기억하기</label>
+              <label for="rememberToken" style="margin: 0"
+                >이 브라우저에 토큰 기억하기</label
+              >
             </span>
-            <button type="button" id="refreshLevelsBtn" style="width:auto; padding:.35rem .8rem; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--fg); font-size:.8rem; cursor:pointer;">항목 새로고침</button>
+            <button
+              type="button"
+              id="refreshLevelsBtn"
+              style="
+                width: auto;
+                padding: 0.35rem 0.8rem;
+                border-radius: 999px;
+                border: 1px solid var(--border);
+                background: transparent;
+                color: var(--fg);
+                font-size: 0.8rem;
+                cursor: pointer;
+              "
+            >
+              항목 새로고침
+            </button>
           </div>
-          <p id="levelLoadStatus" class="hint" style="margin-top:.6rem; margin-bottom:0;"></p>
+          <p
+            id="levelLoadStatus"
+            class="hint"
+            style="margin-top: 0.6rem; margin-bottom: 0"
+          ></p>
         </fieldset>
 
         <fieldset>
           <legend>어디에 넣을지</legend>
           <label>
-            <span>1단계 항목 (예: 호수, 연도, 주제 등 — 마인드맵 첫 번째 가지)</span>
+            <span
+              >1단계 항목 (예: 호수, 연도, 주제 등 — 마인드맵 첫 번째
+              가지)</span
+            >
             <select id="level1Select"></select>
           </label>
           <label id="level1NewWrap" hidden>
@@ -130,7 +271,10 @@
             <input type="text" id="level2New" placeholder="예: 공지" />
           </label>
           <label>
-            <span>3단계 항목 (선택 — 예: 유형, 계절 등 그 아래 세 번째 가지, 비워두면 2단계 아래 바로 추가됩니다)</span>
+            <span
+              >3단계 항목 (선택 — 예: 유형, 계절 등 그 아래 세 번째 가지,
+              비워두면 2단계 아래 바로 추가됩니다)</span
+            >
             <select id="level3Select"></select>
           </label>
           <label id="level3NewWrap" hidden>
@@ -143,35 +287,147 @@
           <legend>게시물 내용</legend>
           <label>
             <span>제목</span>
-            <input type="text" id="title" placeholder="마인드맵에 표시될 제목" required />
+            <input
+              type="text"
+              id="title"
+              placeholder="마인드맵에 표시될 제목"
+              required
+            />
           </label>
-          <p class="hint">아래 중 하나만 채우면 됩니다. 여러 개를 채우면 영상 링크 → 영상 파일 → 문서 파일 → 이미지 → 글 순서로 하나만 사용됩니다.</p>
+          <p class="hint">
+            아래 중 하나만 채우면 됩니다. 여러 개를 채우면 영상 링크 → 영상 파일
+            → 문서 파일 → 이미지 → 글 순서로 하나만 사용됩니다.
+          </p>
           <label>
-            <span>이미지 (선택 — 여러 장 선택 가능, 2장 이상이면 옆으로 스크롤하는 갤러리로 열립니다)</span>
+            <span
+              >이미지 (선택 — 여러 장 선택 가능, 2장 이상이면 옆으로 스크롤하는
+              갤러리로 열립니다)</span
+            >
             <input type="file" id="imageFile" accept="image/*" multiple />
           </label>
           <label>
             <span>문서 파일 (선택 — PDF, 한글(HWP), Word)</span>
-            <input type="file" id="docFile" accept=".pdf,.hwp,.hwpx,.doc,.docx" />
+            <input
+              type="file"
+              id="docFile"
+              accept=".pdf,.hwp,.hwpx,.doc,.docx"
+            />
           </label>
           <label>
-            <span>영상 파일 (선택 — 용량이 작고 짧은 영상 권장, 저장소에 직접 저장됨)</span>
+            <span
+              >영상 파일 (선택 — 용량이 작고 짧은 영상 권장, 저장소에 직접
+              저장됨)</span
+            >
             <input type="file" id="videoFile" accept="video/*" />
           </label>
           <p id="sizeWarning"></p>
           <label>
-            <span>영상 링크 (선택 — 유튜브·인스타그램 등 이미 올라가 있는 영상 URL)</span>
-            <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+            <span
+              >영상 링크 (선택 — 유튜브·인스타그램 등 이미 올라가 있는 영상
+              URL)</span
+            >
+            <input
+              type="text"
+              id="videoUrl"
+              placeholder="https://www.youtube.com/watch?v=..."
+            />
           </label>
           <label>
-            <span>글 내용 (선택 — 입력하면 텍스트 파일로 저장돼서 클릭 시 열립니다)</span>
-            <textarea id="bodyText" rows="6" placeholder="이미지·영상·문서 없이 글만 올릴 때 사용"></textarea>
+            <span
+              >글 내용 (선택 — 입력하면 텍스트 파일로 저장돼서 클릭 시
+              열립니다)</span
+            >
+            <textarea
+              id="bodyText"
+              rows="6"
+              placeholder="이미지·영상·문서 없이 글만 올릴 때 사용"
+            ></textarea>
           </label>
         </fieldset>
 
         <button type="submit" class="primary" id="submitBtn">올리기</button>
       </form>
       <p id="status"></p>
+
+      <h2 class="section-title">게시물 관리 (삭제 · 수정)</h2>
+      <fieldset>
+        <legend>어디에 있는지</legend>
+        <label>
+          <span>1단계 항목</span>
+          <select id="manageLevel1Select"></select>
+        </label>
+        <label>
+          <span>2단계 항목</span>
+          <select id="manageLevel2Select"></select>
+        </label>
+        <p id="manageStatus" class="hint" style="margin-bottom: 0">
+          1단계/2단계를 고르면 그 아래 모든 게시물이 표시됩니다.
+        </p>
+      </fieldset>
+
+      <div id="manageList"></div>
+
+      <div id="editPanel" hidden>
+        <label>
+          <span>제목</span>
+          <input type="text" id="editTitle" />
+        </label>
+        <p id="editCurrentHint" class="hint"></p>
+        <p class="hint">
+          아래 중 하나를 채우면 기존 첨부를 새 것으로 바꿉니다. 비워두면
+          제목만 바뀌고 첨부는 그대로 유지됩니다.
+        </p>
+        <label>
+          <span>이미지 (선택 — 여러 장 가능)</span>
+          <input type="file" id="editImageFile" accept="image/*" multiple />
+        </label>
+        <label>
+          <span>문서 파일 (선택)</span>
+          <input
+            type="file"
+            id="editDocFile"
+            accept=".pdf,.hwp,.hwpx,.doc,.docx"
+          />
+        </label>
+        <label>
+          <span>영상 파일 (선택)</span>
+          <input type="file" id="editVideoFile" accept="video/*" />
+        </label>
+        <label>
+          <span>영상 링크 (선택)</span>
+          <input type="text" id="editVideoUrl" placeholder="https://..." />
+        </label>
+        <label>
+          <span>글 내용 (선택)</span>
+          <textarea id="editBodyText" rows="5"></textarea>
+        </label>
+        <div class="row" style="gap: 0.5rem">
+          <button
+            type="button"
+            id="editSaveBtn"
+            class="primary"
+            style="width: auto; flex: 1; padding: 0.5rem"
+          >
+            저장
+          </button>
+          <button
+            type="button"
+            id="editCancelBtn"
+            style="
+              width: auto;
+              padding: 0.5rem 1rem;
+              border-radius: 999px;
+              border: 1px solid var(--border);
+              background: transparent;
+              color: var(--fg);
+              cursor: pointer;
+            "
+          >
+            취소
+          </button>
+        </div>
+        <p id="editStatus" class="hint"></p>
+      </div>
     </main>
     <script src="admin.js"></script>
   </body>

@@ -35,6 +35,21 @@ const els = {
   status: document.getElementById('status'),
   refreshLevelsBtn: document.getElementById('refreshLevelsBtn'),
   levelLoadStatus: document.getElementById('levelLoadStatus'),
+  manageLevel1Select: document.getElementById('manageLevel1Select'),
+  manageLevel2Select: document.getElementById('manageLevel2Select'),
+  manageStatus: document.getElementById('manageStatus'),
+  manageList: document.getElementById('manageList'),
+  editPanel: document.getElementById('editPanel'),
+  editTitle: document.getElementById('editTitle'),
+  editCurrentHint: document.getElementById('editCurrentHint'),
+  editImageFile: document.getElementById('editImageFile'),
+  editDocFile: document.getElementById('editDocFile'),
+  editVideoFile: document.getElementById('editVideoFile'),
+  editVideoUrl: document.getElementById('editVideoUrl'),
+  editBodyText: document.getElementById('editBodyText'),
+  editSaveBtn: document.getElementById('editSaveBtn'),
+  editCancelBtn: document.getElementById('editCancelBtn'),
+  editStatus: document.getElementById('editStatus'),
 };
 
 // GitHub Contents API는 파일 하나당 사실상 100MB가 한계이고, 그보다 훨씬 작아도
@@ -193,8 +208,8 @@ function findBlockEnd(lines, startIdx, indent) {
   return lines.length;
 }
 
-// parentIdx===-1 이면 문서 최상위(1단계)에서 찾는다. 없으면 부모 블록 끝에 새로 만든다.
-function ensureChild(lines, parentIdx, parentIndent, name) {
+// parentIdx===-1 이면 문서 최상위(1단계)에서 찾는다. 없으면 null.
+function findChild(lines, parentIdx, parentIndent, name) {
   const indent = parentIdx === -1 ? 0 : parentIndent + 2;
   const searchStart = parentIdx === -1 ? 0 : parentIdx + 1;
   const searchEnd = parentIdx === -1 ? lines.length : findBlockEnd(lines, parentIdx, parentIndent);
@@ -208,7 +223,16 @@ function ensureChild(lines, parentIdx, parentIndent, name) {
       }
     }
   }
+  return null;
+}
 
+// findChild와 같지만 없으면 부모 블록 끝에 새로 만든다.
+function ensureChild(lines, parentIdx, parentIndent, name) {
+  const found = findChild(lines, parentIdx, parentIndent, name);
+  if (found) return found;
+
+  const indent = parentIdx === -1 ? 0 : parentIndent + 2;
+  const searchEnd = parentIdx === -1 ? lines.length : findBlockEnd(lines, parentIdx, parentIndent);
   const prefix = ' '.repeat(indent);
   if (parentIdx === -1) {
     if (lines[lines.length - 1] !== undefined && lines[lines.length - 1].trim() !== '') lines.push('');
@@ -217,6 +241,73 @@ function ensureChild(lines, parentIdx, parentIndent, name) {
   }
   lines.splice(searchEnd, 0, `${prefix}- ${name}`);
   return { idx: searchEnd, indent };
+}
+
+// 특정 줄(idx, indent)이 리프인지(자식이 없는지) 판단한다.
+function isLeafLine(lines, idx, indent) {
+  for (let i = idx + 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const ind = indentOf(lines[i]);
+    return ind === null || ind <= indent;
+  }
+  return true;
+}
+
+// 주어진 부모(level2 또는 level3) 블록 아래의 모든 리프(게시물)를 재귀적으로 모은다.
+// 중간에 더 깊은 하위 카테고리가 있으면 그 이름을 path에 쌓아가며 계속 내려간다.
+function collectLeaves(lines, parentIdx, parentIndent, pathPrefix) {
+  const indent = parentIndent + 2;
+  const end = findBlockEnd(lines, parentIdx, parentIndent);
+  const results = [];
+
+  for (let i = parentIdx + 1; i < end; i++) {
+    if (!lines[i].trim()) continue;
+    if (indentOf(lines[i]) !== indent) continue;
+    const m = lines[i].match(/^\s*-\s+(.*)$/);
+    if (!m) continue;
+    const content = m[1].trim();
+    const linkMatch = content.match(/^\[(.+)\]\((.+)\)$/);
+    const name = linkMatch ? linkMatch[1] : content;
+
+    if (isLeafLine(lines, i, indent)) {
+      results.push({
+        lineIndex: i,
+        lineText: lines[i],
+        indent,
+        path: pathPrefix,
+        title: name,
+        target: linkMatch ? linkMatch[2] : null,
+      });
+    } else {
+      results.push(...collectLeaves(lines, i, indent, [...pathPrefix, name]));
+    }
+  }
+  return results;
+}
+
+// 게시물의 첨부(target)가 가리키는 assets/ 파일 경로 목록을 뽑아낸다.
+// 외부 링크(영상 URL 등)나 첨부 없음이면 빈 배열.
+function extractAssetPaths(target) {
+  if (!target) return [];
+  if (/^https?:\/\//.test(target)) return [];
+  if (target.startsWith('gallery.html?')) {
+    const qs = target.split('?')[1] || '';
+    const imgs = (new URLSearchParams(qs).get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return imgs;
+  }
+  if (target.startsWith('assets/')) return [target];
+  return [];
+}
+
+async function deleteAsset(path, token) {
+  const file = await ghGetFile(path, token);
+  if (!file) return; // 이미 없으면 조용히 넘어간다
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `Delete asset ${path}`, sha: file.sha, branch: BRANCH }),
+  });
+  if (!res.ok) throw new Error(`${path} 삭제 실패 (${res.status})`);
 }
 
 function insertPost(mdText, { level1, level2, level3, leafLine }) {
@@ -332,6 +423,7 @@ async function refreshLevels() {
     fillSelectWithNewOption(els.level1Select, [...levelMap.keys()], prevLevel1);
     updateLevel1NewVisibility();
     updateLevel2Options();
+    refreshManageLevel1();
     setLevelLoadStatus(
       levelMap.size ? `1단계 항목 ${levelMap.size}개를 불러왔습니다.` : 'archive.md에 1단계 항목이 아직 없습니다 — 새로 추가로 시작하세요.',
       'ok',
@@ -354,6 +446,266 @@ els.level3Select.addEventListener('change', () => {
 });
 
 els.refreshLevelsBtn.addEventListener('click', refreshLevels);
+
+// ---------- 게시물 관리 (삭제 · 수정) ----------
+function fillPlainSelect(select, names) {
+  select.innerHTML = '';
+  if (!names.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '(항목 없음)';
+    select.append(opt);
+    return;
+  }
+  names.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.append(opt);
+  });
+}
+
+function refreshManageLevel1() {
+  const prev = els.manageLevel1Select.value;
+  fillPlainSelect(els.manageLevel1Select, [...levelMap.keys()]);
+  if (prev && [...levelMap.keys()].includes(prev)) els.manageLevel1Select.value = prev;
+  updateManageLevel2();
+}
+
+function updateManageLevel2() {
+  const level1 = els.manageLevel1Select.value;
+  const names = levelMap.has(level1) ? [...levelMap.get(level1).keys()] : [];
+  fillPlainSelect(els.manageLevel2Select, names);
+  loadManageList();
+}
+
+function setManageStatus(msg, kind) {
+  els.manageStatus.textContent = msg;
+  els.manageStatus.style.color = kind === 'error' ? '#c0392b' : kind === 'ok' ? 'var(--accent)' : '';
+}
+
+let manageLeaves = [];
+
+async function loadManageList() {
+  const level1 = els.manageLevel1Select.value;
+  const level2 = els.manageLevel2Select.value;
+  els.editPanel.hidden = true;
+  editingLeaf = null;
+  if (!level1 || !level2) {
+    manageLeaves = [];
+    els.manageList.innerHTML = '';
+    return;
+  }
+  setManageStatus('목록 불러오는 중...');
+  try {
+    const res = await fetch(`archive.md?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`archive.md 로드 실패 (${res.status})`);
+    const text = await res.text();
+    const lines = text.split('\n');
+    const l1 = findChild(lines, -1, 0, level1);
+    const l2 = l1 && findChild(lines, l1.idx, l1.indent, level2);
+    manageLeaves = l2 ? collectLeaves(lines, l2.idx, l2.indent, []) : [];
+    renderManageList();
+    setManageStatus(manageLeaves.length ? `게시물 ${manageLeaves.length}개` : '게시물이 없습니다.', 'ok');
+  } catch (e) {
+    manageLeaves = [];
+    els.manageList.innerHTML = '';
+    setManageStatus(`목록을 불러오지 못했습니다: ${e.message}`, 'error');
+  }
+}
+
+function renderManageList() {
+  els.manageList.innerHTML = '';
+  manageLeaves.forEach((leaf, index) => {
+    const row = document.createElement('div');
+    row.className = 'manage-row';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'manage-title';
+    titleEl.textContent = leaf.title;
+    if (leaf.path.length) {
+      const pathEl = document.createElement('span');
+      pathEl.className = 'manage-path';
+      pathEl.textContent = leaf.path.join(' / ');
+      titleEl.prepend(pathEl);
+    }
+    row.append(titleEl);
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = '수정';
+    editBtn.addEventListener('click', () => openEdit(index));
+    row.append(editBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'danger';
+    deleteBtn.textContent = '삭제';
+    deleteBtn.addEventListener('click', () => handleDelete(index, deleteBtn));
+    row.append(deleteBtn);
+
+    els.manageList.append(row);
+  });
+}
+
+async function handleDelete(index, btnEl) {
+  const leaf = manageLeaves[index];
+  if (btnEl.dataset.confirm !== '1') {
+    btnEl.dataset.confirm = '1';
+    btnEl.textContent = '정말 삭제?';
+    clearTimeout(btnEl._resetTimer);
+    btnEl._resetTimer = setTimeout(() => {
+      btnEl.dataset.confirm = '0';
+      btnEl.textContent = '삭제';
+    }, 4000);
+    return;
+  }
+  clearTimeout(btnEl._resetTimer);
+
+  const token = els.token.value.trim();
+  if (!token) { setManageStatus('GitHub 토큰을 입력해주세요.', 'error'); return; }
+
+  btnEl.disabled = true;
+  setManageStatus(`"${leaf.title}" 삭제 중...`);
+  try {
+    const current = await ghGetFile('archive.md', token);
+    if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
+    const currentText = b64DecodeUtf8(current.content);
+    const lines = currentText.split('\n');
+    if (lines[leaf.lineIndex] !== leaf.lineText) {
+      throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+    }
+    lines.splice(leaf.lineIndex, 1);
+    await ghPutText('archive.md', token, lines.join('\n'), `Delete "${leaf.title}"`, current.sha);
+
+    for (const assetPath of extractAssetPaths(leaf.target)) {
+      try { await deleteAsset(assetPath, token); } catch (e) { console.warn('첨부 파일 삭제 실패:', e); }
+    }
+
+    setManageStatus(`"${leaf.title}" 삭제 완료.`, 'ok');
+    await loadManageList();
+  } catch (err) {
+    setManageStatus(`삭제 실패: ${err.message}`, 'error');
+    btnEl.disabled = false;
+    btnEl.dataset.confirm = '0';
+    btnEl.textContent = '삭제';
+  }
+}
+
+let editingLeaf = null;
+
+function openEdit(index) {
+  const leaf = manageLeaves[index];
+  editingLeaf = leaf;
+  els.editTitle.value = leaf.title;
+  els.editImageFile.value = '';
+  els.editDocFile.value = '';
+  els.editVideoFile.value = '';
+  els.editVideoUrl.value = '';
+  els.editBodyText.value = '';
+  els.editCurrentHint.textContent = leaf.target ? `현재 첨부: ${leaf.target}` : '현재 첨부 없음 (글자만 있는 항목)';
+  setEditStatus('');
+  els.editPanel.hidden = false;
+  els.editPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function setEditStatus(msg, kind) {
+  els.editStatus.textContent = msg;
+  els.editStatus.style.color = kind === 'error' ? '#c0392b' : kind === 'ok' ? 'var(--accent)' : '';
+}
+
+els.editCancelBtn.addEventListener('click', () => {
+  els.editPanel.hidden = true;
+  editingLeaf = null;
+});
+
+els.editSaveBtn.addEventListener('click', async () => {
+  if (!editingLeaf) return;
+  const token = els.token.value.trim();
+  if (!token) { setEditStatus('GitHub 토큰을 입력해주세요.', 'error'); return; }
+  const title = els.editTitle.value.trim();
+  if (!title) { setEditStatus('제목을 입력해주세요.', 'error'); return; }
+
+  const imageFiles = [...els.editImageFile.files];
+  const docFile = els.editDocFile.files[0];
+  const videoFile = els.editVideoFile.files[0];
+  const videoUrl = els.editVideoUrl.value.trim();
+  const bodyText = els.editBodyText.value.trim();
+  const hasNewAttachment = Boolean(videoUrl || videoFile || docFile || imageFiles.length || bodyText);
+
+  els.editSaveBtn.disabled = true;
+  setEditStatus('저장 중...');
+  try {
+    const current = await ghGetFile('archive.md', token);
+    if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
+    const currentText = b64DecodeUtf8(current.content);
+    const lines = currentText.split('\n');
+    if (lines[editingLeaf.lineIndex] !== editingLeaf.lineText) {
+      throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+    }
+
+    let newTarget = editingLeaf.target; // 기본: 첨부 유지, 제목만 변경
+    if (hasNewAttachment) {
+      if (videoUrl) {
+        newTarget = videoUrl;
+      } else if (videoFile) {
+        const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
+        newTarget = `assets/video-${timestampSlug()}.${ext}`;
+        setEditStatus('영상 업로드 중...');
+        await ghPutBinaryBase64(newTarget, token, await fileToBase64(videoFile), `Replace video for "${title}"`);
+      } else if (docFile) {
+        const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
+        newTarget = `assets/doc-${timestampSlug()}.${ext}`;
+        setEditStatus('문서 업로드 중...');
+        await ghPutBinaryBase64(newTarget, token, await fileToBase64(docFile), `Replace document for "${title}"`);
+      } else if (imageFiles.length === 1) {
+        const [file] = imageFiles;
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        newTarget = `assets/img-${timestampSlug()}.${ext}`;
+        setEditStatus('이미지 업로드 중...');
+        await ghPutBinaryBase64(newTarget, token, await fileToBase64(file), `Replace image for "${title}"`);
+      } else if (imageFiles.length > 1) {
+        const slug = timestampSlug();
+        const paths = [];
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+          const path = `assets/img-${slug}-${i}.${ext}`;
+          setEditStatus(`이미지 업로드 중... (${i + 1}/${imageFiles.length})`);
+          await ghPutBinaryBase64(path, token, await fileToBase64(file), `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
+          paths.push(path);
+        }
+        newTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
+      } else if (bodyText) {
+        newTarget = `assets/post-${timestampSlug()}.txt`;
+        setEditStatus('글 파일 업로드 중...');
+        await ghPutText(newTarget, token, bodyText, `Replace post text for "${title}"`);
+      }
+    }
+
+    const newLine = `${' '.repeat(editingLeaf.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
+    lines[editingLeaf.lineIndex] = newLine;
+    await ghPutText('archive.md', token, lines.join('\n'), `Edit "${editingLeaf.title}" -> "${title}"`, current.sha);
+
+    if (hasNewAttachment && newTarget !== editingLeaf.target) {
+      for (const oldPath of extractAssetPaths(editingLeaf.target)) {
+        try { await deleteAsset(oldPath, token); } catch (e) { console.warn('이전 첨부 삭제 실패:', e); }
+      }
+    }
+
+    setEditStatus('저장 완료.', 'ok');
+    els.editPanel.hidden = true;
+    editingLeaf = null;
+    await loadManageList();
+  } catch (err) {
+    setEditStatus(`오류: ${err.message}`, 'error');
+  } finally {
+    els.editSaveBtn.disabled = false;
+  }
+});
+
+els.manageLevel1Select.addEventListener('change', updateManageLevel2);
+els.manageLevel2Select.addEventListener('change', loadManageList);
 
 (function init() {
   const saved = localStorage.getItem(TOKEN_STORAGE_KEY);

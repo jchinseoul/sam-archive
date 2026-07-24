@@ -366,6 +366,16 @@
   window.addEventListener('resize', fit);
   document.getElementById('fitBtn').addEventListener('click', fit);
 
+  // 좌측 상단 "SAM ARCHIVE" 클릭 시 처음 상태(중심 글자만)로 되돌아가 화면 중앙에 맞춘다.
+  const homeLink = document.getElementById('homeLink');
+  if (homeLink) {
+    homeLink.addEventListener('click', () => {
+      collapseBeyond(root, 0);
+      update(root);
+      fit();
+    });
+  }
+
   // ---------- 5. 리스트 보기 토글 (모바일 등 트리 조작이 불편할 때 대안) ----------
   function renderListHTML(node) {
     if (!node.children || node.children.length === 0) {
