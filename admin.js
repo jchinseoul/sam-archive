@@ -898,7 +898,20 @@ els.editSaveBtn.addEventListener('click', async () => {
       const lines = currentText.split('\n');
       const fresh = relocateLeaf(lines, editLevel1, editLevel2, editingLeaf);
       if (!fresh) throw new Error('게시물을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
-      const newLine = `${' '.repeat(fresh.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
+      const leafContent = newTarget ? `- [${title}](${newTarget})` : `- ${title}`;
+      // 수정 후 제목이 날짜 형태면, 제자리 교체 대신 한 번 빼냈다가 날짜 순서에 맞는
+      // 위치로 다시 끼워 넣는다(새 게시물 추가할 때와 동일한 정렬 규칙).
+      if (looksLikeDateTitle(title)) {
+        lines.splice(fresh.lineIndex, 1);
+        const updatedText = insertPost(lines.join('\n'), {
+          level1: editLevel1,
+          level2: editLevel2,
+          level3: fresh.path && fresh.path[0] ? fresh.path[0] : null,
+          leafLine: leafContent,
+        });
+        return { text: updatedText, message: `Edit "${editingLeaf.title}" -> "${title}"` };
+      }
+      const newLine = `${' '.repeat(fresh.indent)}${leafContent}`;
       lines[fresh.lineIndex] = newLine;
       return { text: lines.join('\n'), message: `Edit "${editingLeaf.title}" -> "${title}"` };
     });
