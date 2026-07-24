@@ -373,7 +373,7 @@ els.form.addEventListener('submit', async (e) => {
   const level3Raw = els.level3Select.value;
   const level3 = level3Raw === NONE_OPTION ? '' : (level3Raw === NEW_OPTION ? els.level3New.value.trim() : level3Raw);
   const title = els.title.value.trim();
-  const imageFile = els.imageFile.files[0];
+  const imageFiles = [...els.imageFile.files];
   const docFile = els.docFile.files[0];
   const videoFile = els.videoFile.files[0];
   const videoUrl = els.videoUrl.value.trim();
@@ -411,12 +411,28 @@ els.form.addEventListener('submit', async (e) => {
       setStatus('문서 업로드 중...');
       const base64 = await fileToBase64(docFile);
       await ghPutBinaryBase64(linkTarget, token, base64, `Add document for "${title}"`);
-    } else if (imageFile) {
+    } else if (imageFiles.length === 1) {
+      const [imageFile] = imageFiles;
       const ext = (imageFile.name.split('.').pop() || 'jpg').toLowerCase();
       linkTarget = `assets/img-${timestampSlug()}.${ext}`;
       setStatus('이미지 업로드 중...');
       const base64 = await fileToBase64(imageFile);
       await ghPutBinaryBase64(linkTarget, token, base64, `Add image for "${title}"`);
+    } else if (imageFiles.length > 1) {
+      // 2장 이상이면 각각 assets/에 올리고, gallery.html이 옆으로 스크롤하는
+      // 뷰어로 한꺼번에 보여주도록 이미지 경로 목록을 쿼리 문자열로 넘긴다.
+      const slug = timestampSlug();
+      const paths = [];
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `assets/img-${slug}-${i}.${ext}`;
+        setStatus(`이미지 업로드 중... (${i + 1}/${imageFiles.length})`);
+        const base64 = await fileToBase64(file);
+        await ghPutBinaryBase64(path, token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
+        paths.push(path);
+      }
+      linkTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
     } else if (bodyText) {
       linkTarget = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
