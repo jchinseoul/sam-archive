@@ -727,15 +727,15 @@ els.editSaveBtn.addEventListener('click', async () => {
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (imageFiles.length >= 1) {
       const slug = timestampSlug();
-      const paths = [];
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
+      setEditStatus(imageFiles.length > 1 ? `이미지 ${imageFiles.length}장 업로드 중...` : '이미지 업로드 중...');
+      const paths = imageFiles.map((file, i) => {
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        const path = `assets/img-${slug}-${i}.${ext}`;
-        setEditStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
-        await ghPutBinaryBase64(path, token, await fileToBase64(file), `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
-        paths.push(path);
-      }
+        return `assets/img-${slug}-${i}.${ext}`;
+      });
+      await Promise.all(imageFiles.map(async (file, i) => {
+        const base64 = await fileToBase64(file);
+        await ghPutBinaryBase64(paths[i], token, base64, `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
+      }));
       newTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
       if (bodyText) {
         const textPath = `assets/text-${slug}.txt`;
@@ -862,17 +862,17 @@ els.form.addEventListener('submit', async (e) => {
     } else if (imageFiles.length >= 1) {
       // 이미지는 개수와 상관없이 항상 gallery.html로 연결한다(1장이어도 동일한 뷰어 사용).
       // 함께 적은 글이 있으면 이미지 옆에 보여줄 설명글로 같이 올린다.
+      // 이미지끼리는 서로 다른 파일이라 한 장씩 순서대로 기다릴 필요가 없어서 동시에 올린다.
       const slug = timestampSlug();
-      const paths = [];
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
+      setStatus(imageFiles.length > 1 ? `이미지 ${imageFiles.length}장 업로드 중...` : '이미지 업로드 중...');
+      const paths = imageFiles.map((file, i) => {
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        const path = `assets/img-${slug}-${i}.${ext}`;
-        setStatus(imageFiles.length > 1 ? `이미지 업로드 중... (${i + 1}/${imageFiles.length})` : '이미지 업로드 중...');
+        return `assets/img-${slug}-${i}.${ext}`;
+      });
+      await Promise.all(imageFiles.map(async (file, i) => {
         const base64 = await fileToBase64(file);
-        await ghPutBinaryBase64(path, token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
-        paths.push(path);
-      }
+        await ghPutBinaryBase64(paths[i], token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
+      }));
       linkTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
       if (bodyText) {
         const textPath = `assets/text-${slug}.txt`;
@@ -903,13 +903,11 @@ els.form.addEventListener('submit', async (e) => {
       }
     }
 
-    setStatus('업데이트 표시 기록 중...');
-    try {
-      await markUpdated([level1, level2, level3].filter(Boolean), token);
-    } catch (badgeErr) {
-      // 배지 기록이 실패해도 게시물 자체는 이미 올라갔으니 치명적 오류로 취급하지 않는다.
+    // 빨간 점 배지 기록은 게시물이 이미 다 올라간 뒤의 부가 기능이라, 완료 메시지를
+    // 기다리게 하지 않고 백그라운드로 넘긴다(실패해도 게시물 자체엔 지장 없음).
+    markUpdated([level1, level2, level3].filter(Boolean), token).catch((badgeErr) => {
       console.warn('업데이트 배지 기록 실패:', badgeErr);
-    }
+    });
 
     setStatus(`완료! "${[level1, level2, level3].filter(Boolean).join(' > ')} > ${title}" 게시물이 추가됐습니다.\n1분 정도 후 사이트에 반영됩니다.`, 'ok');
 
