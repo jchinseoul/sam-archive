@@ -14,7 +14,7 @@
     - [2023-08-30](gallery.html?imgs=assets%2Fimg-20260725-014152-ph94h-0.jpg&text=assets%2Ftext-20260725-014152-ph94h.txt)
 - 2024
   - 게시물
-    - [2024-03-01 24-1 시작합니다!](assets/post-20260725-010057-lki20.txt)
+    - [2024-03-01](gallery.html?imgs=assets%2Fimg-20260725-014317-j6lak-0.jpg%2Cassets%2Fimg-20260725-014317-j6lak-1.jpg%2Cassets%2Fimg-20260725-014317-j6lak-2.jpg%2Cassets%2Fimg-20260725-014317-j6lak-3.jpg%2Cassets%2Fimg-20260725-014317-j6lak-4.jpg%2Cassets%2Fimg-20260725-014317-j6lak-5.jpg&text=assets%2Ftext-20260725-014317-j6lak.txt)
 - 2025
   - 게시물
 - 2026
