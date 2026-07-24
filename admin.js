@@ -87,7 +87,7 @@ async function ghGetFile(path, token) {
   return res.json(); // { content(base64, 줄바꿈 포함), sha }
 }
 
-async function ghPutText(path, token, text, message, sha) {
+async function ghPutText(path, token, text, message, sha, attempt = 0) {
   const body = { message, content: b64EncodeUtf8(text), branch: BRANCH };
   if (sha) body.sha = sha;
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(path)}`, {
@@ -95,6 +95,12 @@ async function ghPutText(path, token, text, message, sha) {
     headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  // sha 없이 새 파일을 만드는 경우(설명글·글 텍스트 등)만 재시도한다. sha를 넘긴 기존 파일
+  // 수정(archive.md 등)은 호출한 쪽에서 최신 sha로 다시 읽어와 재시도하므로 여기선 건드리지 않는다.
+  if (res.status === 409 && !sha && attempt < 3) {
+    await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+    return ghPutText(path, token, text, message, sha, attempt + 1);
+  }
   if (!res.ok) throw new Error(`${path} 저장 실패 (${res.status}): ${await res.text()}`);
   return res.json();
 }
@@ -105,9 +111,11 @@ async function ghPutBinaryBase64(path, token, base64Content, message, attempt = 
     headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, content: base64Content, branch: BRANCH }),
   });
-  // 같은 브랜치에 다른 커밋이 거의 동시에 겹치면 드물게 409가 날 수 있어, 한 번은 자동으로 다시 시도한다.
-  if (res.status === 409 && attempt === 0) {
-    return ghPutBinaryBase64(path, token, base64Content, message, 1);
+  // 빠르게 연속으로 커밋하면 GitHub 쪽에서 아주 짧게 내부 정합성이 안 맞아 409가 날 때가 있다.
+  // 이럴 땐 대개 조금만 기다렸다 같은 요청을 다시 보내면 풀린다.
+  if (res.status === 409 && attempt < 3) {
+    await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+    return ghPutBinaryBase64(path, token, base64Content, message, attempt + 1);
   }
   if (!res.ok) throw new Error(`${path} 업로드 실패 (${res.status}): ${await res.text()}`);
   return res.json();
