@@ -2,7 +2,6 @@
 
 - About 샘
   - 역사
-    - [2023-08-21 신입생 모집 중입니다!](gallery.html?imgs=assets%2Fimg-20260725-002518-12www-0.jpg%2Cassets%2Fimg-20260725-002518-12www-1.jpg%2Cassets%2Fimg-20260725-002518-12www-2.jpg%2Cassets%2Fimg-20260725-002518-12www-3.jpg)
   - 프레임 워크
 - 시집 추천
   - 봄
