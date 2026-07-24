@@ -13,7 +13,7 @@
     - [2023-08-21](gallery.html?imgs=assets%2Fimg-20260725-013647-z49av-0.jpg%2Cassets%2Fimg-20260725-013647-z49av-1.jpg%2Cassets%2Fimg-20260725-013647-z49av-2.jpg%2Cassets%2Fimg-20260725-013647-z49av-3.jpg&text=assets%2Ftext-20260725-013647-z49av.txt)
     - [2023-08-30](gallery.html?imgs=assets%2Fimg-20260725-014458-9kick-0.jpg&text=assets%2Ftext-20260725-014458-9kick.txt)
   - 릴스
-    - [2023-12-25](assets/video-20260725-024000-u2tf0.mp4)
+    - [2023-12-25](gallery.html?text=assets%2Fpost-20260725-031122-hr4se.txt)
 - 2024
   - 게시물
     - [2024-03-01](gallery.html?imgs=assets%2Fimg-20260725-014317-j6lak-0.jpg%2Cassets%2Fimg-20260725-014317-j6lak-1.jpg%2Cassets%2Fimg-20260725-014317-j6lak-2.jpg%2Cassets%2Fimg-20260725-014317-j6lak-3.jpg%2Cassets%2Fimg-20260725-014317-j6lak-4.jpg%2Cassets%2Fimg-20260725-014317-j6lak-5.jpg&text=assets%2Ftext-20260725-014317-j6lak.txt)
