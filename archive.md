@@ -10,7 +10,7 @@
   - 겨울
 - 2023
   - 게시물
-    - [2023-08-21](assets/post-20260725-011935-g0nze.txt)
+    - [2023-08-21](gallery.html?imgs=assets%2Fimg-20260725-013647-z49av-0.jpg%2Cassets%2Fimg-20260725-013647-z49av-1.jpg%2Cassets%2Fimg-20260725-013647-z49av-2.jpg%2Cassets%2Fimg-20260725-013647-z49av-3.jpg&text=assets%2Ftext-20260725-013647-z49av.txt)
     - [2023-08-30](assets/img-20260725-005814-z2gd4.jpg)
 - 2024
   - 게시물
