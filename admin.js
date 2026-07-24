@@ -271,27 +271,27 @@ function setLevelLoadStatus(msg, kind) {
   els.levelLoadStatus.style.color = kind === 'error' ? '#c0392b' : kind === 'ok' ? 'var(--accent)' : '';
 }
 
+// 읽기는 토큰이 필요 없다 — archive.md는 공개 저장소 파일이므로, 이 사이트 자신이
+// 서빙하는 archive.md를 그대로 fetch해서 쓴다(app.js가 마인드맵을 그릴 때 쓰는 것과 동일한 파일).
+// 토큰은 실제로 글을 "쓸" 때(제출 시)만 필요하다.
 async function refreshLevels() {
-  const token = els.token.value.trim();
-  if (!token) {
-    levelMap = new Map();
-    fillSelectWithNewOption(els.level1Select, []);
+  setLevelLoadStatus('항목 불러오는 중...');
+  try {
+    const res = await fetch(`archive.md?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`archive.md 로드 실패 (${res.status})`);
+    const text = await res.text();
+    levelMap = parseLevels(text);
+    const prevLevel1 = els.level1Select.value;
+    fillSelectWithNewOption(els.level1Select, [...levelMap.keys()], prevLevel1);
     updateLevel1NewVisibility();
     updateLevel2Options();
-    setLevelLoadStatus('토큰을 입력하면 기존 1단계/2단계 항목을 불러옵니다.');
-    return;
+    setLevelLoadStatus(
+      levelMap.size ? `1단계 항목 ${levelMap.size}개를 불러왔습니다.` : 'archive.md에 1단계 항목이 아직 없습니다 — 새로 추가로 시작하세요.',
+      'ok',
+    );
+  } catch (e) {
+    setLevelLoadStatus(`항목을 불러오지 못했습니다: ${e.message}`, 'error');
   }
-  setLevelLoadStatus('항목 불러오는 중...');
-  const file = await ghGetFile('archive.md', token);
-  levelMap = file ? parseLevels(b64DecodeUtf8(file.content)) : new Map();
-  const prevLevel1 = els.level1Select.value;
-  fillSelectWithNewOption(els.level1Select, [...levelMap.keys()], prevLevel1);
-  updateLevel1NewVisibility();
-  updateLevel2Options();
-  setLevelLoadStatus(
-    levelMap.size ? `1단계 항목 ${levelMap.size}개를 불러왔습니다.` : 'archive.md에 1단계 항목이 아직 없습니다 — 새로 추가로 시작하세요.',
-    'ok',
-  );
 }
 
 els.level1Select.addEventListener('change', () => {
@@ -302,19 +302,12 @@ els.level2Select.addEventListener('change', () => {
   els.level2NewWrap.hidden = els.level2Select.value !== NEW_OPTION;
 });
 
-function tryRefreshLevels() {
-  refreshLevels().catch((e) => setLevelLoadStatus(`항목을 불러오지 못했습니다: ${e.message} (토큰의 저장소 선택·Contents 권한을 확인하세요)`, 'error'));
-}
-
-// 붙여넣기 직후, 포커스가 벗어날 때, 수동 새로고침 버튼 — 어느 경우든 놓치지 않게 여러 이벤트에 건다.
-els.token.addEventListener('change', tryRefreshLevels);
-els.token.addEventListener('blur', tryRefreshLevels);
-els.refreshLevelsBtn.addEventListener('click', tryRefreshLevels);
+els.refreshLevelsBtn.addEventListener('click', refreshLevels);
 
 (function init() {
   const saved = localStorage.getItem(TOKEN_STORAGE_KEY);
   if (saved) els.token.value = saved;
-  tryRefreshLevels();
+  refreshLevels();
 })();
 
 // ---------- 제출 ----------
