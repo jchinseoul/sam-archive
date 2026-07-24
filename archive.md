@@ -11,6 +11,7 @@
 - 2023
   - 게시물
     - [2023-08-21 신입생 모집 중입니다!](gallery.html?imgs=assets%2Fimg-20260725-005437-g0lrv-0.jpg%2Cassets%2Fimg-20260725-005437-g0lrv-1.jpg%2Cassets%2Fimg-20260725-005437-g0lrv-2.jpg%2Cassets%2Fimg-20260725-005437-g0lrv-3.jpg)
+    - [2023-08-30](assets/img-20260725-005814-z2gd4.jpg)
 - 2024
   - 게시물
 - 2025
