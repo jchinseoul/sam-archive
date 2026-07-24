@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SAM ARCHIVE — 게시물 올리기</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      main.admin {
+        overflow: auto;
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 3rem;
+        width: 100%;
+      }
+      main.admin p.lead {
+        opacity: .75;
+        font-size: .9rem;
+        margin-top: -.5rem;
+      }
+      fieldset {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0 0 1rem;
+      }
+      legend { padding: 0 .4rem; opacity: .8; font-size: .85rem; }
+      label { display: block; font-size: .9rem; margin-bottom: .9rem; }
+      label > span { display: block; margin-bottom: .35rem; }
+      label:last-child { margin-bottom: 0; }
+      input[type="text"],
+      input[type="password"],
+      select,
+      textarea {
+        width: 100%;
+        padding: .55rem .6rem;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        font-size: .95rem;
+        font-family: inherit;
+      }
+      textarea { resize: vertical; }
+      .row { display: flex; align-items: center; gap: .5rem; font-size: .85rem; opacity: .85; }
+      .row input[type="checkbox"] { width: auto; }
+      button.primary {
+        width: 100%;
+        padding: .7rem;
+        border-radius: 999px;
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      button.primary:disabled { opacity: .5; cursor: default; }
+      #status {
+        margin-top: 1rem;
+        font-size: .9rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #status.error { color: #c0392b; }
+      #status.ok { color: var(--accent); }
+      details.help { margin-bottom: 1rem; font-size: .85rem; opacity: .85; }
+      details.help summary { cursor: pointer; }
+      a.back { color: var(--fg); text-decoration: none; opacity: .7; font-size: .85rem; }
+      a.back:hover { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>📮 SAM ARCHIVE 게시물 올리기</h1>
+      <a class="back" href="index.html">← 마인드맵으로</a>
+    </header>
+    <main class="admin">
+      <p class="lead">
+        여기서 올린 이미지·글은 GitHub 저장소에 그대로 저장되고, 마인드맵의 골라준 위치 아래에 자동으로 추가됩니다.
+        관리자 전용 페이지이며, archive.md는 호수·유형처럼 고정된 형식이 아니어도 되므로 아래에서 원하는 이름으로 자유롭게 항목을 만들 수 있습니다.
+      </p>
+
+      <details class="help">
+        <summary>GitHub 토큰은 어떻게 만드나요?</summary>
+        <p>
+          GitHub 우측 상단 프로필 → Settings → 맨 아래 <strong>Developer settings</strong> →
+          <strong>Personal access tokens</strong> → <strong>Fine-grained tokens</strong> →
+          <strong>Generate new token</strong>.<br />
+          Repository access는 <strong>Only select repositories</strong>로 하고 이 저장소만 선택하세요.<br />
+          Permissions → Repository permissions → <strong>Contents: Read and write</strong>로 설정하고 생성하면 됩니다.<br />
+          생성된 토큰을 아래에 붙여넣으세요. 이 토큰은 이 브라우저에만 저장되고 서버로 전송되지 않습니다(GitHub API로 직접 전송).
+        </p>
+      </details>
+
+      <form id="postForm">
+        <fieldset>
+          <legend>GitHub 접속</legend>
+          <label>
+            <span>Personal Access Token</span>
+            <input type="password" id="token" placeholder="github_pat_..." autocomplete="off" required />
+          </label>
+          <div class="row">
+            <input type="checkbox" id="rememberToken" checked />
+            <label for="rememberToken" style="margin:0;">이 브라우저에 토큰 기억하기</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>어디에 넣을지</legend>
+          <label>
+            <span>1단계 항목 (예: 호수, 연도, 주제 등 — 마인드맵 첫 번째 가지)</span>
+            <select id="level1Select"></select>
+          </label>
+          <label id="level1NewWrap" hidden>
+            <span>1단계 항목 이름 (새로 만들기)</span>
+            <input type="text" id="level1New" placeholder="예: 2026 가을" />
+          </label>
+          <label>
+            <span>2단계 항목 (예: 유형, 계절 등 — 그 아래 두 번째 가지)</span>
+            <select id="level2Select"></select>
+          </label>
+          <label id="level2NewWrap" hidden>
+            <span>2단계 항목 이름 (새로 만들기)</span>
+            <input type="text" id="level2New" placeholder="예: 공지" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>게시물 내용</legend>
+          <label>
+            <span>제목</span>
+            <input type="text" id="title" placeholder="마인드맵에 표시될 제목" required />
+          </label>
+          <label>
+            <span>이미지 (선택)</span>
+            <input type="file" id="imageFile" accept="image/*" />
+          </label>
+          <label>
+            <span>글 내용 (선택 — 입력하면 텍스트 파일로 저장돼서 클릭 시 열립니다)</span>
+            <textarea id="bodyText" rows="6" placeholder="이미지 없이 글만 올릴 때 사용"></textarea>
+          </label>
+        </fieldset>
+
+        <button type="submit" class="primary" id="submitBtn">올리기</button>
+      </form>
+      <p id="status"></p>
+    </main>
+    <script src="admin.js"></script>
+  </body>
+</html>
