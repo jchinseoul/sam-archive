@@ -1,18 +1,17 @@
 // ============================================================
-// 문학회 매거진 아카이브 — 위→아래로 뻗는 나무형 마인드맵
-// markmap 대신 d3.hierarchy + d3.tree를 직접 사용합니다.
+// 문학회 매거진 아카이브 — 중심에서 왼쪽·오른쪽·아래로 펼쳐지는 부채꼴 마인드맵
+// markmap 대신 d3.hierarchy + d3.tree(방사형)를 직접 사용합니다.
 // 앞으로 이 파일은 다시 건드릴 필요가 없습니다. (수정 대상은 archive.md만)
 // ============================================================
 
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DX = 90;                // 형제 노드 간 가로 간격
-  const NODE_DY = 170;                // 부모-자식 간 세로 간격 (깊이 방향)
+  const NODE_DY = 170;                // 부모-자식 간 반지름 간격 (깊이 방향)
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
-  const INITIAL_VISIBLE_DEPTH = 1;    // 처음엔 호수 노드까지만 펼쳐서 보여줌
+  const INITIAL_VISIBLE_DEPTH = 0;    // 처음엔 중심 글자(루트)만 보여주고, 클릭하면 가지가 뻗어나옴
 
   const colorScale = d3.interpolateRgb(COLOR_TOP, COLOR_BOTTOM);
   const colorOf = (d) => colorScale(Math.min(d.depth / MAX_DEPTH, 1));
@@ -58,9 +57,10 @@
 
   const data = parseMarkdown(markdown);
 
-  // ---------- 2. d3 계층 + 트리 레이아웃 (위→아래) ----------
+  // ---------- 2. d3 계층 + 트리 레이아웃 (부채꼴: 오른쪽→아래→왼쪽으로 반원 펼침) ----------
   const root = d3.hierarchy(data);
-  const treeLayout = d3.tree().nodeSize([NODE_DX, NODE_DY]);
+  // 각도(x)만 0~PI로 배분받고, 반지름(y)은 아래에서 depth 기준으로 직접 계산한다.
+  const treeLayout = d3.tree().size([Math.PI, 1]);
 
   // 처음엔 INITIAL_VISIBLE_DEPTH보다 깊은 노드는 접어둠
   function collapseBeyond(node, depth) {
@@ -105,21 +105,36 @@
   }
 
   // ---------- 4. 렌더링 ----------
-  const linkGenerator = (d) => {
-    const sourceX = d.source.x;
-    const sourceY = d.source.y;
-    const targetX = d.target.x;
-    const targetY = d.target.y;
-    const bend = Math.max(8, Math.min(18, Math.abs(targetX - sourceX) * 0.2));
-    const wave = Math.sin((sourceY + targetY) * 0.04 + d.target.depth) * 9;
-    const curveY1 = sourceY + (targetY - sourceY) * 0.35 + wave;
-    const curveY2 = targetY - (targetY - sourceY) * 0.35 - wave;
+  // 극좌표(d.x=각도, d.y=반지름) → 화면 좌표 변환. 각도는 오른쪽(π/2)에서
+  // 시작해 아래(π)를 지나 왼쪽(3π/2)까지, 위쪽으로는 절대 뻗지 않는 반원.
+  const cartesianX = (d) => d.y * Math.sin(d.x);
+  const cartesianY = (d) => -d.y * Math.cos(d.x);
+  const nodeTransform = (d) => `translate(${cartesianX(d)},${cartesianY(d)})`;
+  const radialLink = d3.linkRadial().angle((d) => d.x).radius((d) => d.y);
 
-    return `M ${sourceX} ${sourceY} C ${sourceX + bend} ${curveY1}, ${targetX - bend} ${curveY2}, ${targetX} ${targetY}`;
-  };
+  // 노드마다 항상 같은 값이 나오는 의사난수(0~1) — 매번 다시 그려도 흔들리지 않으면서
+  // 가지 길이·각도가 자연스럽게 들쭉날쭉해 보이게 만드는 용도.
+  function hash01(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return ((h >>> 0) % 10000) / 10000;
+  }
+  const ANGLE_JITTER = 0.16;      // 라디안, 약 ±9도
+  const RADIUS_JITTER = 0.22;     // NODE_DY 대비 비율, 약 ±22%
 
   function update() {
     treeLayout(root);
+    root.each((d) => {
+      const key = d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
+      const angleJitter = d.depth === 0 ? 0 : (hash01(key) - 0.5) * ANGLE_JITTER;
+      const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * NODE_DY * RADIUS_JITTER;
+      d.x = d.x + Math.PI / 2 + angleJitter; // [0, π] → [π/2, 3π/2] (오른쪽 → 아래 → 왼쪽) + 미세한 각도 흔들림
+      d.y = d.depth * NODE_DY + radiusJitter; // 반지름도 depth마다 살짝 들쭉날쭉하게
+    });
+
     const nodes = root.descendants();
     const links = root.links();
 
@@ -130,10 +145,10 @@
         (enter) => enter.append('path')
           .attr('class', 'link')
           .attr('stroke', (d) => colorOf(d.target))
-          .attr('d', linkGenerator),
+          .attr('d', radialLink),
         (update) => update
           .attr('stroke', (d) => colorOf(d.target))
-          .attr('d', linkGenerator),
+          .attr('d', radialLink),
         (exit) => exit.remove()
       );
 
@@ -143,9 +158,9 @@
 
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node')
-      .attr('transform', (d) => `translate(${d.x},${d.y})`)
+      .attr('transform', nodeTransform)
       .style('cursor', 'pointer')
-      .on('click', (event, d) => {
+      .on('click', (_event, d) => {
         if (d.data.url) {
           window.open(d.data.url, '_blank', 'noopener');
           return;
@@ -168,7 +183,7 @@
       .text((d) => d.data.name);
 
     node.merge(nodeEnter)
-      .attr('transform', (d) => `translate(${d.x},${d.y})`);
+      .attr('transform', nodeTransform);
 
     node.select('text').text((d) => d.data.name);
 
