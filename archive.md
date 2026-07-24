@@ -11,7 +11,7 @@
 - 2023
   - 게시물
     - [2023-08-21](gallery.html?imgs=assets%2Fimg-20260725-013647-z49av-0.jpg%2Cassets%2Fimg-20260725-013647-z49av-1.jpg%2Cassets%2Fimg-20260725-013647-z49av-2.jpg%2Cassets%2Fimg-20260725-013647-z49av-3.jpg&text=assets%2Ftext-20260725-013647-z49av.txt)
-    - [2023-08-30](gallery.html?imgs=assets%2Fimg-20260725-014152-ph94h-0.jpg&text=assets%2Ftext-20260725-014152-ph94h.txt)
+    - [2023-08-30](gallery.html?imgs=assets%2Fimg-20260725-014458-9kick-0.jpg&text=assets%2Ftext-20260725-014458-9kick.txt)
 - 2024
   - 게시물
     - [2024-03-01](gallery.html?imgs=assets%2Fimg-20260725-014317-j6lak-0.jpg%2Cassets%2Fimg-20260725-014317-j6lak-1.jpg%2Cassets%2Fimg-20260725-014317-j6lak-2.jpg%2Cassets%2Fimg-20260725-014317-j6lak-3.jpg%2Cassets%2Fimg-20260725-014317-j6lak-4.jpg%2Cassets%2Fimg-20260725-014317-j6lak-5.jpg&text=assets%2Ftext-20260725-014317-j6lak.txt)
