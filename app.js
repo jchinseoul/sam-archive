@@ -62,6 +62,10 @@
   // 각도(x)만 0~PI로 배분받고, 반지름(y)은 아래에서 depth 기준으로 직접 계산한다.
   const treeLayout = d3.tree().size([Math.PI, 1]);
 
+  // 접기 전에 "원래 하위 트리 크기"를 노드마다 미리 저장해둔다 (자기 자신 포함).
+  // 나중에 접혔다 펼쳐졌다 해도 이 값은 안 바뀌어야 하므로 collapseBeyond보다 먼저 계산.
+  root.each((d) => { d.__fullSize = d.descendants().length; });
+
   // 처음엔 INITIAL_VISIBLE_DEPTH보다 깊은 노드는 접어둠
   function collapseBeyond(node, depth) {
     if (!node.children) return;
@@ -125,14 +129,27 @@
   const ANGLE_JITTER = 0.16;      // 라디안, 약 ±9도
   const RADIUS_JITTER = 0.22;     // NODE_DY 대비 비율, 약 ±22%
 
+  // "연관도"의 대리 지표: 이 노드의 하위 트리가 부모의 하위 트리에서 차지하는
+  // 비중. 부모 아래 콘텐츠의 큰 부분을 차지할수록(=구조적으로 강하게 연결될수록)
+  // 연관도가 높다고 보고 가지를 짧게, 부모 대비 비중이 작은(곁가지성) 항목은
+  // 가지를 길게 만든다. __fullSize는 접기 전에 미리 계산해둔 값이라 펼침 상태와
+  // 무관하게 항상 같다.
+  function relevance(d) {
+    if (!d.parent) return 0;
+    return Math.min(1, d.__fullSize / d.parent.__fullSize);
+  }
+  const RELEVANCE_SHRINK = 0.45; // 연관도가 1일 때 반지름을 최대 45%까지 줄임
+
   function update() {
     treeLayout(root);
     root.each((d) => {
       const key = d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
       const angleJitter = d.depth === 0 ? 0 : (hash01(key) - 0.5) * ANGLE_JITTER;
       const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * NODE_DY * RADIUS_JITTER;
+      const rel = relevance(d);
+      const baseRadius = d.depth * NODE_DY * (1 - rel * RELEVANCE_SHRINK);
       d.x = d.x + Math.PI / 2 + angleJitter; // [0, π] → [π/2, 3π/2] (오른쪽 → 아래 → 왼쪽) + 미세한 각도 흔들림
-      d.y = d.depth * NODE_DY + radiusJitter; // 반지름도 depth마다 살짝 들쭉날쭉하게
+      d.y = d.depth === 0 ? 0 : Math.max(baseRadius + radiusJitter, NODE_DY * 0.4); // 연관도가 높을수록 가지가 짧아짐
     });
 
     const nodes = root.descendants();
