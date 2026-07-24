@@ -580,15 +580,22 @@ async function handleDelete(index, btnEl) {
   btnEl.disabled = true;
   setManageStatus(`"${leaf.title}" 삭제 중...`);
   try {
-    const current = await ghGetFile('archive.md', token);
-    if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
-    const currentText = b64DecodeUtf8(current.content);
-    const lines = currentText.split('\n');
-    if (lines[leaf.lineIndex] !== leaf.lineText) {
-      throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+    for (let attempt = 0; ; attempt++) {
+      const current = await ghGetFile('archive.md', token);
+      if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
+      const lines = b64DecodeUtf8(current.content).split('\n');
+      if (lines[leaf.lineIndex] !== leaf.lineText) {
+        throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+      }
+      lines.splice(leaf.lineIndex, 1);
+      try {
+        await ghPutText('archive.md', token, lines.join('\n'), `Delete "${leaf.title}"`, current.sha);
+        break;
+      } catch (e) {
+        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
+        throw e;
+      }
     }
-    lines.splice(leaf.lineIndex, 1);
-    await ghPutText('archive.md', token, lines.join('\n'), `Delete "${leaf.title}"`, current.sha);
 
     for (const assetPath of extractAssetPaths(leaf.target)) {
       try { await deleteAsset(assetPath, token); } catch (e) { console.warn('첨부 파일 삭제 실패:', e); }
@@ -700,14 +707,6 @@ els.editSaveBtn.addEventListener('click', async () => {
   els.editSaveBtn.disabled = true;
   setEditStatus('저장 중...');
   try {
-    const current = await ghGetFile('archive.md', token);
-    if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
-    const currentText = b64DecodeUtf8(current.content);
-    const lines = currentText.split('\n');
-    if (lines[editingLeaf.lineIndex] !== editingLeaf.lineText) {
-      throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
-    }
-
     let newTarget = editingLeaf.target; // 기본: 첨부 유지, 제목만 변경
     let deleteOldAssets = [];
 
@@ -763,9 +762,28 @@ els.editSaveBtn.addEventListener('click', async () => {
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     }
 
-    const newLine = `${' '.repeat(editingLeaf.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
-    lines[editingLeaf.lineIndex] = newLine;
-    await ghPutText('archive.md', token, lines.join('\n'), `Edit "${editingLeaf.title}" -> "${title}"`, current.sha);
+    // archive.md는 업로드가 다 끝난 지금 시점에 최신 상태로 다시 읽어와서 고친다 —
+    // 업로드하는 동안(특히 이미지 여러 장) 다른 저장이 먼저 반영됐을 수 있어서,
+    // 미리 읽어둔 sha를 그대로 쓰면 409(충돌) 오류가 난다. 그래도 한 번 더 충돌하면
+    // (거의 동시에 다른 저장이 겹친 경우) 한 번만 재시도한다.
+    setEditStatus('archive.md 갱신 중...');
+    for (let attempt = 0; ; attempt++) {
+      const current = await ghGetFile('archive.md', token);
+      if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
+      const lines = b64DecodeUtf8(current.content).split('\n');
+      if (lines[editingLeaf.lineIndex] !== editingLeaf.lineText) {
+        throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+      }
+      const newLine = `${' '.repeat(editingLeaf.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
+      lines[editingLeaf.lineIndex] = newLine;
+      try {
+        await ghPutText('archive.md', token, lines.join('\n'), `Edit "${editingLeaf.title}" -> "${title}"`, current.sha);
+        break;
+      } catch (e) {
+        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
+        throw e;
+      }
+    }
 
     for (const oldPath of deleteOldAssets) {
       try { await deleteAsset(oldPath, token); } catch (e) { console.warn('이전 첨부 삭제 실패:', e); }
@@ -869,14 +887,21 @@ els.form.addEventListener('submit', async (e) => {
     }
 
     setStatus('archive.md 갱신 중...');
-    const current = await ghGetFile('archive.md', token);
-    if (!current) throw new Error('archive.md 파일을 찾을 수 없습니다.');
-    const currentText = b64DecodeUtf8(current.content);
     const leafLine = linkTarget ? `- [${title}](${linkTarget})` : `- ${title}`;
-    const updatedText = insertPost(currentText, { level1, level2, level3: level3 || null, leafLine });
-
     const pathLabel = [level1, level2, level3].filter(Boolean).join(' / ');
-    await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${pathLabel}`, current.sha);
+    for (let attempt = 0; ; attempt++) {
+      const current = await ghGetFile('archive.md', token);
+      if (!current) throw new Error('archive.md 파일을 찾을 수 없습니다.');
+      const currentText = b64DecodeUtf8(current.content);
+      const updatedText = insertPost(currentText, { level1, level2, level3: level3 || null, leafLine });
+      try {
+        await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${pathLabel}`, current.sha);
+        break;
+      } catch (e) {
+        if (attempt === 0 && /\(409\)/.test(e.message)) continue;
+        throw e;
+      }
+    }
 
     setStatus('업데이트 표시 기록 중...');
     try {
