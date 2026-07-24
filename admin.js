@@ -9,6 +9,7 @@ const REPO = 'sam-archive';
 const BRANCH = 'main';
 const TOKEN_STORAGE_KEY = 'sam_archive_admin_token';
 const NEW_OPTION = '__new__';
+const NONE_OPTION = '__none__';
 
 const els = {
   token: document.getElementById('token'),
@@ -19,6 +20,9 @@ const els = {
   level2Select: document.getElementById('level2Select'),
   level2NewWrap: document.getElementById('level2NewWrap'),
   level2New: document.getElementById('level2New'),
+  level3Select: document.getElementById('level3Select'),
+  level3NewWrap: document.getElementById('level3NewWrap'),
+  level3New: document.getElementById('level3New'),
   title: document.getElementById('title'),
   imageFile: document.getElementById('imageFile'),
   docFile: document.getElementById('docFile'),
@@ -151,11 +155,12 @@ function indentOf(line) {
   return m ? m[1].length : null;
 }
 
-// { level1이름: [level2이름, ...] } 형태로, 실제 archive.md에 있는 1단계/2단계 항목만 뽑는다.
+// level1 -> level2 -> Set(level3) 형태로, 실제 archive.md에 있는 1/2/3단계 항목만 뽑는다.
 function parseLevels(mdText) {
   const lines = mdText.split('\n');
-  const map = new Map(); // name -> Set(level2 names)
+  const map = new Map(); // level1 -> Map(level2 -> Set(level3))
   let currentLevel1 = null;
+  let currentLevel2 = null;
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -167,9 +172,13 @@ function parseLevels(mdText) {
 
     if (ind === 0) {
       currentLevel1 = text;
-      if (!map.has(currentLevel1)) map.set(currentLevel1, []);
+      currentLevel2 = null;
+      if (!map.has(currentLevel1)) map.set(currentLevel1, new Map());
     } else if (ind === 2 && currentLevel1) {
-      map.get(currentLevel1).push(text);
+      currentLevel2 = text;
+      if (!map.get(currentLevel1).has(currentLevel2)) map.get(currentLevel1).set(currentLevel2, new Set());
+    } else if (ind === 4 && currentLevel1 && currentLevel2) {
+      map.get(currentLevel1).get(currentLevel2).add(text);
     }
   }
   return map;
@@ -184,42 +193,46 @@ function findBlockEnd(lines, startIdx, indent) {
   return lines.length;
 }
 
-function insertPost(mdText, { level1, level2, leafLine }) {
-  const lines = mdText.split('\n');
+// parentIdx===-1 이면 문서 최상위(1단계)에서 찾는다. 없으면 부모 블록 끝에 새로 만든다.
+function ensureChild(lines, parentIdx, parentIndent, name) {
+  const indent = parentIdx === -1 ? 0 : parentIndent + 2;
+  const searchStart = parentIdx === -1 ? 0 : parentIdx + 1;
+  const searchEnd = parentIdx === -1 ? lines.length : findBlockEnd(lines, parentIdx, parentIndent);
 
-  let level1Idx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (indentOf(lines[i]) === 0) {
-      const m = lines[i].match(/^-\s+(.*)$/);
-      if (m && stripDecoration(m[1]) === stripDecoration(level1)) { level1Idx = i; break; }
-    }
-  }
-
-  if (level1Idx === -1) {
-    if (lines[lines.length - 1] !== undefined && lines[lines.length - 1].trim() !== '') lines.push('');
-    lines.push(`- ${level1}`);
-    lines.push(`  - ${level2}`);
-    lines.push(`    ${leafLine}`);
-    return lines.join('\n');
-  }
-
-  const level1End = findBlockEnd(lines, level1Idx, 0);
-  let level2Idx = -1;
-  for (let i = level1Idx + 1; i < level1End; i++) {
+  for (let i = searchStart; i < searchEnd; i++) {
     if (!lines[i].trim()) continue;
-    if (indentOf(lines[i]) === 2) {
+    if (indentOf(lines[i]) === indent) {
       const m = lines[i].match(/^\s*-\s+(.*)$/);
-      if (m && stripDecoration(m[1]) === stripDecoration(level2)) { level2Idx = i; break; }
+      if (m && stripDecoration(m[1]) === stripDecoration(name)) {
+        return { idx: i, indent };
+      }
     }
   }
 
-  if (level2Idx === -1) {
-    lines.splice(level1End, 0, `  - ${level2}`, `    ${leafLine}`);
-    return lines.join('\n');
+  const prefix = ' '.repeat(indent);
+  if (parentIdx === -1) {
+    if (lines[lines.length - 1] !== undefined && lines[lines.length - 1].trim() !== '') lines.push('');
+    lines.push(`${prefix}- ${name}`);
+    return { idx: lines.length - 1, indent };
   }
+  lines.splice(searchEnd, 0, `${prefix}- ${name}`);
+  return { idx: searchEnd, indent };
+}
 
-  const level2End = findBlockEnd(lines, level2Idx, 2);
-  lines.splice(level2End, 0, `    ${leafLine}`);
+function insertPost(mdText, { level1, level2, level3, leafLine }) {
+  const lines = mdText.split('\n');
+  // 파일 끝의 빈 줄들을 미리 정리해둔다. 그대로 두면 문서의 맨 마지막 블록에
+  // 이어붙일 때(findBlockEnd가 lines.length를 반환하는 경우) 그 빈 줄 뒤에
+  // 삽입되면서 불필요한 빈 줄이 하나 남는다.
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+
+  const l1 = ensureChild(lines, -1, 0, level1);
+  const l2 = ensureChild(lines, l1.idx, l1.indent, level2);
+  const parent = level3 ? ensureChild(lines, l2.idx, l2.indent, level3) : l2;
+
+  const leafIndent = parent.indent + 2;
+  const leafEnd = findBlockEnd(lines, parent.idx, parent.indent);
+  lines.splice(leafEnd, 0, `${' '.repeat(leafIndent)}${leafLine}`);
   return lines.join('\n');
 }
 
@@ -261,9 +274,43 @@ function updateLevel1NewVisibility() {
 
 function updateLevel2Options() {
   const level1 = els.level1Select.value;
-  const level2Names = level1 !== NEW_OPTION && levelMap.has(level1) ? levelMap.get(level1) : [];
-  fillSelectWithNewOption(els.level2Select, [...new Set(level2Names)]);
+  const level2Names = level1 !== NEW_OPTION && levelMap.has(level1) ? [...levelMap.get(level1).keys()] : [];
+  fillSelectWithNewOption(els.level2Select, level2Names);
   els.level2NewWrap.hidden = els.level2Select.value !== NEW_OPTION;
+  updateLevel3Options();
+}
+
+// 3단계는 선택 사항이라, 실제 항목 이름들 앞에 "사용 안 함"을 기본값으로 넣어둔다.
+function fillLevel3Select(names) {
+  const select = els.level3Select;
+  select.innerHTML = '';
+  const noneOpt = document.createElement('option');
+  noneOpt.value = NONE_OPTION;
+  noneOpt.textContent = '사용 안 함 (2단계 아래 바로 추가)';
+  select.append(noneOpt);
+  names.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.append(opt);
+  });
+  const newOpt = document.createElement('option');
+  newOpt.value = NEW_OPTION;
+  newOpt.textContent = '+ 새로 추가';
+  select.append(newOpt);
+  select.value = NONE_OPTION;
+}
+
+function updateLevel3Options() {
+  const level1 = els.level1Select.value;
+  const level2 = els.level2Select.value;
+  let level3Names = [];
+  if (level1 !== NEW_OPTION && level2 !== NEW_OPTION && levelMap.has(level1)) {
+    const level2Map = levelMap.get(level1);
+    if (level2Map.has(level2)) level3Names = [...level2Map.get(level2)];
+  }
+  fillLevel3Select(level3Names);
+  els.level3NewWrap.hidden = els.level3Select.value !== NEW_OPTION;
 }
 
 function setLevelLoadStatus(msg, kind) {
@@ -300,6 +347,10 @@ els.level1Select.addEventListener('change', () => {
 });
 els.level2Select.addEventListener('change', () => {
   els.level2NewWrap.hidden = els.level2Select.value !== NEW_OPTION;
+  updateLevel3Options();
+});
+els.level3Select.addEventListener('change', () => {
+  els.level3NewWrap.hidden = els.level3Select.value !== NEW_OPTION;
 });
 
 els.refreshLevelsBtn.addEventListener('click', refreshLevels);
@@ -319,6 +370,8 @@ els.form.addEventListener('submit', async (e) => {
 
   const level1 = els.level1Select.value === NEW_OPTION ? els.level1New.value.trim() : els.level1Select.value;
   const level2 = els.level2Select.value === NEW_OPTION ? els.level2New.value.trim() : els.level2Select.value;
+  const level3Raw = els.level3Select.value;
+  const level3 = level3Raw === NONE_OPTION ? '' : (level3Raw === NEW_OPTION ? els.level3New.value.trim() : level3Raw);
   const title = els.title.value.trim();
   const imageFile = els.imageFile.files[0];
   const docFile = els.docFile.files[0];
@@ -328,6 +381,7 @@ els.form.addEventListener('submit', async (e) => {
 
   if (!level1) { setStatus('1단계 항목 이름을 입력해주세요.', 'error'); return; }
   if (!level2) { setStatus('2단계 항목 이름을 입력해주세요.', 'error'); return; }
+  if (level3Raw === NEW_OPTION && !level3) { setStatus('3단계 항목 이름을 입력해주세요.', 'error'); return; }
   if (!title) { setStatus('제목을 입력해주세요.', 'error'); return; }
 
   els.submitBtn.disabled = true;
@@ -374,19 +428,20 @@ els.form.addEventListener('submit', async (e) => {
     if (!current) throw new Error('archive.md 파일을 찾을 수 없습니다.');
     const currentText = b64DecodeUtf8(current.content);
     const leafLine = linkTarget ? `- [${title}](${linkTarget})` : `- ${title}`;
-    const updatedText = insertPost(currentText, { level1, level2, leafLine });
+    const updatedText = insertPost(currentText, { level1, level2, level3: level3 || null, leafLine });
 
-    await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${level1} / ${level2}`, current.sha);
+    const pathLabel = [level1, level2, level3].filter(Boolean).join(' / ');
+    await ghPutText('archive.md', token, updatedText, `Add "${title}" under ${pathLabel}`, current.sha);
 
     setStatus('업데이트 표시 기록 중...');
     try {
-      await markUpdated([level1, level2], token);
+      await markUpdated([level1, level2, level3].filter(Boolean), token);
     } catch (badgeErr) {
       // 배지 기록이 실패해도 게시물 자체는 이미 올라갔으니 치명적 오류로 취급하지 않는다.
       console.warn('업데이트 배지 기록 실패:', badgeErr);
     }
 
-    setStatus(`완료! "${level1} > ${level2} > ${title}" 게시물이 추가됐습니다.\n1분 정도 후 사이트에 반영됩니다.`, 'ok');
+    setStatus(`완료! "${[level1, level2, level3].filter(Boolean).join(' > ')} > ${title}" 게시물이 추가됐습니다.\n1분 정도 후 사이트에 반영됩니다.`, 'ok');
 
     els.title.value = '';
     els.imageFile.value = '';
@@ -397,11 +452,16 @@ els.form.addEventListener('submit', async (e) => {
     els.bodyText.value = '';
     els.level1New.value = '';
     els.level2New.value = '';
+    els.level3New.value = '';
     await refreshLevels();
     if ([...els.level1Select.options].some((o) => o.value === level1)) {
       els.level1Select.value = level1;
       updateLevel2Options();
-      if ([...els.level2Select.options].some((o) => o.value === level2)) els.level2Select.value = level2;
+      if ([...els.level2Select.options].some((o) => o.value === level2)) {
+        els.level2Select.value = level2;
+        updateLevel3Options();
+        if (level3 && [...els.level3Select.options].some((o) => o.value === level3)) els.level3Select.value = level3;
+      }
     }
   } catch (err) {
     setStatus(`오류: ${err.message}`, 'error');

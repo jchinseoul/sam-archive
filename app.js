@@ -171,6 +171,85 @@
     if (depth === 1) return '20px';
     return '16px';
   }
+  const fontPxFor = (depth) => (depth === 0 ? 36 : depth === 1 ? 20 : 16);
+
+  // ---------- 라벨 겹침 방지 ----------
+  // 라벨은 항상 수평으로 그려지므로, 방사형 레이아웃의 각도 배분만으로는 물리적 겹침을
+  // 막을 수 없다. 실제 텍스트 폭을 측정해서, 겹치는 라벨 쌍을 반복적으로 살짝 밀어낸다.
+  // 직전 프레임에도 보이던 라벨(previousKeys)은 거의 그대로 두고, 이번에 새로 나타난
+  // 라벨을 더 크게 밀어내서 "펼칠 때 기존 글자와 겹치지 않게" 만든다.
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  const LABEL_FONT_FAMILY = '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+  function textWidth(text, fontPx) {
+    measureCtx.font = `${fontPx}px ${LABEL_FONT_FAMILY}`;
+    return measureCtx.measureText(text).width;
+  }
+
+  let previousKeys = new Set();
+  const keyOf = (d) => d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
+
+  const OVERLAP_PAD = 10;         // 라벨 사이 최소 여백(px)
+  const OVERLAP_ITERATIONS = 400; // 겹침 해소 반복 횟수(노드 수가 적어 400번 반복해도 수 ms 이내)
+
+  function applyCartesian(d, cx, cy) {
+    const r = Math.sqrt(cx * cx + cy * cy);
+    if (r < 1e-6) return; // 중심으로 완전히 붕괴하는 것만 방지
+    d.y = Math.max(r, NODE_DY * 0.3);
+    d.x = Math.atan2(cx, -cy);
+  }
+  function shiftCartesian(d, dCx, dCy) {
+    applyCartesian(d, cartesianX(d) + dCx, cartesianY(d) + dCy);
+  }
+
+  function resolveLabelOverlaps(nodesArr) {
+    const items = nodesArr.map((d) => {
+      const fontPx = fontPxFor(d.depth);
+      return {
+        d,
+        weight: d.depth === 0 ? 0 : (previousKeys.has(keyOf(d)) ? 0.12 : 1),
+        halfW: textWidth(d.data.name, fontPx) / 2 + OVERLAP_PAD,
+        halfH: fontPx * 0.65 + OVERLAP_PAD,
+        labelDy: fontPx * 1.1, // 라벨은 노드 지점보다 위쪽에 그려짐(dy=-1.1em)
+      };
+    });
+
+    for (let iter = 0; iter < OVERLAP_ITERATIONS; iter++) {
+      let moved = false;
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const a = items[i];
+          const b = items[j];
+          const ax = cartesianX(a.d);
+          const ay = cartesianY(a.d) - a.labelDy;
+          const bx = cartesianX(b.d);
+          const by = cartesianY(b.d) - b.labelDy;
+          let dx = bx - ax;
+          let dy = by - ay;
+          const overlapX = a.halfW + b.halfW - Math.abs(dx);
+          const overlapY = a.halfH + b.halfH - Math.abs(dy);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+
+          const totalW = a.weight + b.weight;
+          if (totalW === 0) continue;
+          if (dx === 0 && dy === 0) dx = 0.001;
+
+          moved = true;
+          if (overlapX < overlapY) {
+            const sign = dx >= 0 ? 1 : -1;
+            const push = overlapX + 0.5;
+            shiftCartesian(a.d, -sign * push * (a.weight / totalW), 0);
+            shiftCartesian(b.d, sign * push * (b.weight / totalW), 0);
+          } else {
+            const sign = dy >= 0 ? 1 : -1;
+            const push = overlapY + 0.5;
+            shiftCartesian(a.d, 0, -sign * push * (a.weight / totalW));
+            shiftCartesian(b.d, 0, sign * push * (b.weight / totalW));
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
 
   function update(source) {
     treeLayout(root);
@@ -185,6 +264,9 @@
     });
 
     const nodes = root.descendants();
+    resolveLabelOverlaps(nodes);
+    previousKeys = new Set(nodes.map(keyOf));
+
     const links = root.links();
     // 새로 나타나거나 사라지는 가지·글자는 클릭한 노드(source)의 현재 위치에서
     // 자라나거나 그 자리로 접혀 들어가는 것처럼 애니메이션한다.
