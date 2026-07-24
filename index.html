@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=5"
+    />
+    <title>SAM ARCHIVE</title>
+    <link rel="icon" href="favicon.ico" />
+    <link rel="stylesheet" href="style.css" />
+    <!-- markmap 관련 스크립트는 더 이상 사용하지 않습니다. d3 하나만 있으면 됩니다. -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  </head>
+  <body>
+    <header>
+      <h1>SAM ARCHIVE</h1>
+      <div class="controls">
+        <button id="fitBtn" type="button">화면에 맞추기</button>
+        <button id="listToggle" type="button">리스트로 보기</button>
+      </div>
+    </header>
+
+    <main>
+      <svg id="tree"></svg>
+      <div id="listView" class="list-view" hidden></div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
