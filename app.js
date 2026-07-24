@@ -37,9 +37,22 @@
   } catch {
     // updates.json이 없거나 형식이 이상해도 배지만 안 보일 뿐, 마인드맵 자체는 정상 작동해야 한다.
   }
+  // 빨간 점을 "확인"하면(그 카테고리를 클릭하면) 사라지게 한다. 서버가 없는 정적
+  // 사이트라 이 브라우저에서 확인했는지만 localStorage에 기억한다(방문자 전체 공용 아님).
+  // 확인한 뒤에 그 카테고리에 또 새 글이 올라오면(더 최신 at) 배지가 다시 뜬다.
+  const SEEN_KEY = 'sam_archive_seen_updates';
+  let seenMap = {};
+  try { seenMap = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch { seenMap = {}; }
   function isRecentlyUpdated(name) {
     const at = lastUpdatedAt.get(name);
-    return typeof at === 'number' && Date.now() - at < NEW_BADGE_MS;
+    if (typeof at !== 'number' || Date.now() - at >= NEW_BADGE_MS) return false;
+    return !(typeof seenMap[name] === 'number' && seenMap[name] >= at);
+  }
+  function markUpdateSeen(name) {
+    const at = lastUpdatedAt.get(name);
+    if (typeof at !== 'number' || seenMap[name] === at) return;
+    seenMap[name] = at;
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenMap)); } catch { /* 저장 실패해도 배지만 계속 보일 뿐, 무시 */ }
   }
 
   function parseMarkdown(md) {
@@ -300,6 +313,7 @@
       .attr('transform', nodeTransform(origin))
       .style('cursor', 'pointer')
       .on('click', (_event, d) => {
+        markUpdateSeen(d.data.name);
         if (d.data.url) {
           window.open(d.data.url, '_blank', 'noopener');
           return;

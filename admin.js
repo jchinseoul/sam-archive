@@ -286,17 +286,45 @@ function collectLeaves(lines, parentIdx, parentIndent, pathPrefix) {
   return results;
 }
 
+// 목록을 불러온 뒤 다른 게시물을 추가/수정/삭제하면 이 게시물의 줄 번호가 밀릴 수 있다.
+// lineIndex를 그대로 믿는 대신, 같은 경로(path)+제목으로 최신 내용에서 다시 찾아낸다.
+function relocateLeaf(freshLines, level1, level2, leaf) {
+  const l1 = findChild(freshLines, -1, 0, level1);
+  const l2 = l1 && findChild(freshLines, l1.idx, l1.indent, level2);
+  if (!l2) return null;
+  const freshLeaves = collectLeaves(freshLines, l2.idx, l2.indent, []);
+  return freshLeaves.find((l) => l.title === leaf.title && l.path.join(' ') === leaf.path.join(' ')) || null;
+}
+
+// gallery.html?imgs=...&video=...&text=... 링크에서 이미지/영상/설명글 경로를 뽑아낸다.
+function parseGalleryTarget(target) {
+  const sp = new URLSearchParams(target.split('?')[1] || '');
+  const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const video = sp.get('video') || null;
+  const textPath = sp.get('text') || null;
+  return { imgs, video, textPath };
+}
+
+// { imgs, video, textPath } 중 있는 것만으로 gallery.html 링크를 만든다.
+function buildGalleryTarget({ imgs, video, textPath }) {
+  const sp = new URLSearchParams();
+  if (imgs && imgs.length) sp.set('imgs', imgs.join(','));
+  if (video) sp.set('video', video);
+  if (textPath) sp.set('text', textPath);
+  return `gallery.html?${sp.toString()}`;
+}
+
 // 게시물의 첨부(target)가 가리키는 assets/ 파일 경로 목록을 뽑아낸다.
 // 외부 링크(영상 URL 등)나 첨부 없음이면 빈 배열.
 function extractAssetPaths(target) {
   if (!target) return [];
   if (/^https?:\/\//.test(target)) return [];
   if (target.startsWith('gallery.html?')) {
-    const qs = target.split('?')[1] || '';
-    const sp = new URLSearchParams(qs);
-    const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
-    const textPath = sp.get('text');
-    return textPath ? [...imgs, textPath] : imgs;
+    const { imgs, video, textPath } = parseGalleryTarget(target);
+    const paths = [...imgs];
+    if (video && !/^https?:\/\//.test(video)) paths.push(video);
+    if (textPath) paths.push(textPath);
+    return paths;
   }
   if (target.startsWith('assets/')) return [target];
   return [];
@@ -577,6 +605,9 @@ async function handleDelete(index, btnEl) {
   const token = els.token.value.trim();
   if (!token) { setManageStatus('GitHub 토큰을 입력해주세요.', 'error'); return; }
 
+  const level1 = els.manageLevel1Select.value;
+  const level2 = els.manageLevel2Select.value;
+
   btnEl.disabled = true;
   setManageStatus(`"${leaf.title}" 삭제 중...`);
   try {
@@ -584,10 +615,9 @@ async function handleDelete(index, btnEl) {
       const current = await ghGetFile('archive.md', token);
       if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
       const lines = b64DecodeUtf8(current.content).split('\n');
-      if (lines[leaf.lineIndex] !== leaf.lineText) {
-        throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
-      }
-      lines.splice(leaf.lineIndex, 1);
+      const fresh = relocateLeaf(lines, level1, level2, leaf);
+      if (!fresh) throw new Error('게시물을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+      lines.splice(fresh.lineIndex, 1);
       try {
         await ghPutText('archive.md', token, lines.join('\n'), `Delete "${leaf.title}"`, current.sha);
         break;
@@ -612,14 +642,6 @@ async function handleDelete(index, btnEl) {
 }
 
 let editingLeaf = null;
-
-// gallery.html?imgs=...&text=... 링크에서 이미지 경로 목록과 설명글 경로를 뽑아낸다.
-function parseGalleryTarget(target) {
-  const sp = new URLSearchParams(target.split('?')[1] || '');
-  const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const textPath = sp.get('text');
-  return { imgs, textPath };
-}
 
 async function openEdit(index) {
   const leaf = manageLeaves[index];
@@ -646,19 +668,40 @@ async function openEdit(index) {
     return;
   }
   if (target.startsWith('gallery.html?')) {
-    const { imgs, textPath } = parseGalleryTarget(target);
-    els.editCurrentHint.textContent = `현재 이미지 ${imgs.length}장 — 아래 "글 내용"만 고치면 이미지는 그대로 유지됩니다.`;
-    imgs.forEach((src) => {
-      const img = document.createElement('img');
-      img.src = src;
-      img.style.cssText = 'max-height:110px;max-width:140px;object-fit:cover;border-radius:6px;margin:0 .4rem .4rem 0;';
-      els.editCurrentPreview.append(img);
-    });
+    const { imgs, video, textPath } = parseGalleryTarget(target);
+    if (imgs.length) {
+      els.editCurrentHint.textContent = `현재 이미지 ${imgs.length}장 — 아래 "글 내용"만 고치면 이미지는 그대로 유지됩니다.`;
+      imgs.forEach((src) => {
+        const img = document.createElement('img');
+        img.src = src;
+        img.style.cssText = 'max-height:110px;max-width:140px;object-fit:cover;border-radius:6px;margin:0 .4rem .4rem 0;';
+        els.editCurrentPreview.append(img);
+      });
+    } else if (video) {
+      const isExternal = /^https?:\/\//.test(video);
+      els.editCurrentHint.textContent = `현재 영상 ${isExternal ? '링크' : '파일'} — 아래 "글 내용"만 고치면 영상은 그대로 유지됩니다.`;
+      if (isExternal) {
+        const a = document.createElement('a');
+        a.href = video;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = video;
+        els.editCurrentPreview.append(a);
+      } else {
+        const v = document.createElement('video');
+        v.src = video;
+        v.controls = true;
+        v.style.cssText = 'max-height:140px;border-radius:6px;';
+        els.editCurrentPreview.append(v);
+      }
+    } else {
+      els.editCurrentHint.textContent = '현재 글만 있는 항목 — 아래에 그대로 채워둠:';
+    }
     if (textPath) {
       try {
         const res = await fetch(`${textPath}?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) els.editBodyText.value = await res.text();
-      } catch { /* 설명글을 못 불러와도 이미지 목록은 이미 보여줬으니 무시 */ }
+      } catch { /* 설명글을 못 불러와도 나머지는 이미 보여줬으니 무시 */ }
     }
     return;
   }
@@ -711,13 +754,26 @@ els.editSaveBtn.addEventListener('click', async () => {
     let deleteOldAssets = [];
 
     if (videoUrl) {
-      newTarget = videoUrl;
-      if (newTarget !== editingLeaf.target) deleteOldAssets = extractAssetPaths(editingLeaf.target);
+      let textPath = null;
+      if (bodyText) {
+        textPath = `assets/text-${timestampSlug()}.txt`;
+        setEditStatus('설명 글 업로드 중...');
+        await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
+      }
+      newTarget = buildGalleryTarget({ video: videoUrl, textPath });
+      deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (videoFile) {
       const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
-      newTarget = `assets/video-${timestampSlug()}.${ext}`;
+      const videoPath = `assets/video-${timestampSlug()}.${ext}`;
       setEditStatus('영상 업로드 중...');
-      await ghPutBinaryBase64(newTarget, token, await fileToBase64(videoFile), `Replace video for "${title}"`);
+      await ghPutBinaryBase64(videoPath, token, await fileToBase64(videoFile), `Replace video for "${title}"`);
+      let textPath = null;
+      if (bodyText) {
+        textPath = `assets/text-${timestampSlug()}.txt`;
+        setEditStatus('설명 글 업로드 중...');
+        await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
+      }
+      newTarget = buildGalleryTarget({ video: videoPath, textPath });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (docFile) {
       const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
@@ -736,29 +792,30 @@ els.editSaveBtn.addEventListener('click', async () => {
         const base64 = await fileToBase64(file);
         await ghPutBinaryBase64(paths[i], token, base64, `Replace image ${i + 1}/${imageFiles.length} for "${title}"`);
       }));
-      newTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
+      let textPath = null;
       if (bodyText) {
-        const textPath = `assets/text-${slug}.txt`;
+        textPath = `assets/text-${slug}.txt`;
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
-        newTarget += `&text=${encodeURIComponent(textPath)}`;
       }
+      newTarget = buildGalleryTarget({ imgs: paths, textPath });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (isGalleryPost) {
-      // 새 이미지를 안 골랐으면 기존 이미지는 그대로 두고, 설명글만 새로 쓰거나(비우면) 지운다.
+      // 새 이미지/영상을 안 골랐으면 기존 미디어(이미지 또는 영상)는 그대로 두고,
+      // 설명글만 새로 쓰거나(비우면) 지운다.
+      let textPath = null;
       if (bodyText) {
-        const textPath = `assets/text-${timestampSlug()}.txt`;
+        textPath = `assets/text-${timestampSlug()}.txt`;
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Update caption for "${title}"`);
-        newTarget = `gallery.html?imgs=${encodeURIComponent(existingGallery.imgs.join(','))}&text=${encodeURIComponent(textPath)}`;
-      } else {
-        newTarget = `gallery.html?imgs=${encodeURIComponent(existingGallery.imgs.join(','))}`;
       }
+      newTarget = buildGalleryTarget({ imgs: existingGallery.imgs, video: existingGallery.video, textPath });
       if (existingGallery.textPath) deleteOldAssets = [existingGallery.textPath];
     } else if (bodyText) {
-      newTarget = `assets/post-${timestampSlug()}.txt`;
+      const textPath = `assets/post-${timestampSlug()}.txt`;
       setEditStatus('글 파일 업로드 중...');
-      await ghPutText(newTarget, token, bodyText, `Replace post text for "${title}"`);
+      await ghPutText(textPath, token, bodyText, `Replace post text for "${title}"`);
+      newTarget = buildGalleryTarget({ textPath });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     }
 
@@ -767,15 +824,16 @@ els.editSaveBtn.addEventListener('click', async () => {
     // 미리 읽어둔 sha를 그대로 쓰면 409(충돌) 오류가 난다. 그래도 한 번 더 충돌하면
     // (거의 동시에 다른 저장이 겹친 경우) 한 번만 재시도한다.
     setEditStatus('archive.md 갱신 중...');
+    const editLevel1 = els.manageLevel1Select.value;
+    const editLevel2 = els.manageLevel2Select.value;
     for (let attempt = 0; ; attempt++) {
       const current = await ghGetFile('archive.md', token);
       if (!current) throw new Error('archive.md를 찾을 수 없습니다.');
       const lines = b64DecodeUtf8(current.content).split('\n');
-      if (lines[editingLeaf.lineIndex] !== editingLeaf.lineText) {
-        throw new Error('그 사이 내용이 바뀐 것 같습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
-      }
-      const newLine = `${' '.repeat(editingLeaf.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
-      lines[editingLeaf.lineIndex] = newLine;
+      const fresh = relocateLeaf(lines, editLevel1, editLevel2, editingLeaf);
+      if (!fresh) throw new Error('게시물을 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해주세요.');
+      const newLine = `${' '.repeat(fresh.indent)}${newTarget ? `- [${title}](${newTarget})` : `- ${title}`}`;
+      lines[fresh.lineIndex] = newLine;
       try {
         await ghPutText('archive.md', token, lines.join('\n'), `Edit "${editingLeaf.title}" -> "${title}"`, current.sha);
         break;
@@ -846,13 +904,26 @@ els.form.addEventListener('submit', async (e) => {
     let linkTarget = null;
 
     if (videoUrl) {
-      linkTarget = videoUrl;
+      let textPath = null;
+      if (bodyText) {
+        textPath = `assets/text-${timestampSlug()}.txt`;
+        setStatus('설명 글 업로드 중...');
+        await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
+      }
+      linkTarget = buildGalleryTarget({ video: videoUrl, textPath });
     } else if (videoFile) {
       const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
-      linkTarget = `assets/video-${timestampSlug()}.${ext}`;
+      const videoPath = `assets/video-${timestampSlug()}.${ext}`;
       setStatus('영상 업로드 중... (용량에 따라 시간이 걸릴 수 있습니다)');
       const base64 = await fileToBase64(videoFile);
-      await ghPutBinaryBase64(linkTarget, token, base64, `Add video for "${title}"`);
+      await ghPutBinaryBase64(videoPath, token, base64, `Add video for "${title}"`);
+      let textPath = null;
+      if (bodyText) {
+        textPath = `assets/text-${timestampSlug()}.txt`;
+        setStatus('설명 글 업로드 중...');
+        await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
+      }
+      linkTarget = buildGalleryTarget({ video: videoPath, textPath });
     } else if (docFile) {
       const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
       linkTarget = `assets/doc-${timestampSlug()}.${ext}`;
@@ -873,17 +944,18 @@ els.form.addEventListener('submit', async (e) => {
         const base64 = await fileToBase64(file);
         await ghPutBinaryBase64(paths[i], token, base64, `Add image ${i + 1}/${imageFiles.length} for "${title}"`);
       }));
-      linkTarget = `gallery.html?imgs=${encodeURIComponent(paths.join(','))}`;
+      let textPath = null;
       if (bodyText) {
-        const textPath = `assets/text-${slug}.txt`;
+        textPath = `assets/text-${slug}.txt`;
         setStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
-        linkTarget += `&text=${encodeURIComponent(textPath)}`;
       }
+      linkTarget = buildGalleryTarget({ imgs: paths, textPath });
     } else if (bodyText) {
-      linkTarget = `assets/post-${timestampSlug()}.txt`;
+      const textPath = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
-      await ghPutText(linkTarget, token, bodyText, `Add post text for "${title}"`);
+      await ghPutText(textPath, token, bodyText, `Add post text for "${title}"`);
+      linkTarget = buildGalleryTarget({ textPath });
     }
 
     setStatus('archive.md 갱신 중...');

@@ -17,6 +17,13 @@
         gap: 1.5rem;
         align-items: flex-start;
       }
+      .gallery-layout.text-only .gallery-strip {
+        display: none;
+      }
+      .gallery-layout.text-only .side-panel {
+        flex: 1 1 auto;
+        max-width: 560px;
+      }
       .gallery-strip {
         flex: 2 1 320px;
         display: flex;
@@ -25,7 +32,8 @@
         scroll-snap-type: x mandatory;
         padding-bottom: 0.5rem;
       }
-      .gallery-strip img {
+      .gallery-strip img,
+      .gallery-strip video {
         flex: 0 0 auto;
         height: 58vh;
         width: auto;
@@ -33,6 +41,25 @@
         border-radius: 10px;
         scroll-snap-align: center;
         object-fit: contain;
+      }
+      .gallery-strip iframe {
+        flex: 0 0 auto;
+        width: min(70vw, 640px);
+        height: min(58vh, 360px);
+        border: 0;
+        border-radius: 10px;
+      }
+      .video-link {
+        display: inline-block;
+        padding: 0.6rem 1.1rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--fg);
+        text-decoration: none;
+        font-size: 0.9rem;
+      }
+      .video-link:hover {
+        opacity: 0.8;
       }
       .side-panel {
         flex: 1 1 240px;
@@ -81,7 +108,7 @@
       <a class="back" href="index.html">← 마인드맵으로</a>
     </header>
     <main class="gallery">
-      <div class="gallery-layout">
+      <div class="gallery-layout" id="layoutEl">
         <div class="gallery-strip" id="stripEl"></div>
         <div class="side-panel">
           <p class="caption" id="captionEl" hidden></p>
@@ -98,9 +125,16 @@
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      const video = params.get("video");
       const textPath = params.get("text");
 
       const strip = document.getElementById("stripEl");
+      const layoutEl = document.getElementById("layoutEl");
+
+      function isExternalUrl(s) {
+        return /^https?:\/\//.test(s);
+      }
+
       if (imgs.length) {
         imgs.forEach((src) => {
           const img = document.createElement("img");
@@ -108,13 +142,40 @@
           img.alt = "";
           strip.appendChild(img);
         });
+      } else if (video) {
+        if (isExternalUrl(video)) {
+          const ytMatch = video.match(
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/,
+          );
+          if (ytMatch) {
+            const iframe = document.createElement("iframe");
+            iframe.src = `https://www.youtube.com/embed/${ytMatch[1]}`;
+            iframe.allow =
+              "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+            iframe.allowFullscreen = true;
+            strip.appendChild(iframe);
+          } else {
+            const a = document.createElement("a");
+            a.href = video;
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.className = "video-link";
+            a.textContent = "원본 영상 보기 →";
+            strip.appendChild(a);
+          }
+        } else {
+          const v = document.createElement("video");
+          v.src = video;
+          v.controls = true;
+          strip.appendChild(v);
+        }
       } else {
-        strip.textContent = "표시할 이미지가 없습니다.";
+        layoutEl.classList.add("text-only");
       }
 
       const captionEl = document.getElementById("captionEl");
       if (textPath) {
-        fetch(textPath)
+        fetch(`${textPath}?t=${Date.now()}`, { cache: "no-store" })
           .then((res) => (res.ok ? res.text() : Promise.reject()))
           .then((text) => {
             captionEl.textContent = text;
