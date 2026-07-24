@@ -20,6 +20,7 @@
     - [2024-08-24](gallery.html?imgs=assets%2Fimg-20260725-021041-2pqpq-0.jpg%2Cassets%2Fimg-20260725-021041-2pqpq-1.jpg%2Cassets%2Fimg-20260725-021041-2pqpq-2.jpg%2Cassets%2Fimg-20260725-021041-2pqpq-3.jpg%2Cassets%2Fimg-20260725-021041-2pqpq-4.jpg%2Cassets%2Fimg-20260725-021041-2pqpq-5.jpg&text=assets%2Ftext-20260725-022154-pgumt.txt)
   - 릴스
     - [2024-01-12](gallery.html?video=assets%2Fvideo-20260725-031423-rpruk.mp4&text=assets%2Ftext-20260725-031427-wobah.txt)
+    - [2024-03-27](gallery.html?video=assets%2Fvideo-20260725-034513-7e8yt.mp4&text=assets%2Ftext-20260725-034517-7w237.txt)
 - 2025
   - 게시물
     - [2025-02-06](gallery.html?imgs=assets%2Fimg-20260725-021354-xu3xa-0.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-1.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-2.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-3.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-4.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-5.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-6.jpg%2Cassets%2Fimg-20260725-021354-xu3xa-7.jpg&text=assets%2Ftext-20260725-021354-xu3xa.txt)
