@@ -8,6 +8,11 @@
   - 여름
   - 가을
   - 겨울
+- 글감
+  - 7월
+    - 장마
+    - 방학
+  - 8월
 - 2023
   - 게시물
     - [2023-08-21](gallery.html?imgs=assets%2Fimg-20260725-013647-z49av-0.jpg%2Cassets%2Fimg-20260725-013647-z49av-1.jpg%2Cassets%2Fimg-20260725-013647-z49av-2.jpg%2Cassets%2Fimg-20260725-013647-z49av-3.jpg&text=assets%2Ftext-20260725-013647-z49av.txt)
