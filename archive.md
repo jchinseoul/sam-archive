@@ -32,7 +32,6 @@
 - 2026
   - 2월
     - 게시물
-      - [2026-02-23](gallery.html?imgs=assets%2Fimg-20260725-043154-d5qcd-0.heic%2Cassets%2Fimg-20260725-043154-d5qcd-1.heic%2Cassets%2Fimg-20260725-043154-d5qcd-2.heic%2Cassets%2Fimg-20260725-043154-d5qcd-3.heic%2Cassets%2Fimg-20260725-043154-d5qcd-4.heic%2Cassets%2Fimg-20260725-043154-d5qcd-5.heic)
   - 7월
     - 게시물
     - 릴스
