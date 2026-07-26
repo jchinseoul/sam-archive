@@ -106,11 +106,12 @@
     </style>
   </head>
   <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
     <header>
       <h1><a href="index.html" style="color: inherit; text-decoration: none">SAM ARCHIVE</a></h1>
       <a class="back" href="index.html">← 마인드맵으로</a>
     </header>
-    <main class="gallery">
+    <main class="gallery" id="main" tabindex="-1">
       <div class="gallery-layout" id="layoutEl">
         <div class="gallery-strip" id="stripEl"></div>
         <div class="side-panel">
@@ -123,11 +124,18 @@
       </div>
     </main>
     <script>
+      // 이미지 설명(대체 텍스트)은 콤마 대신 이 구분자 문자로 나뉘어 온다(설명
+      // 글에 콤마가 들어있어도 안 깨지도록). admin.js의 buildGalleryTarget과 짝을
+      // 이룬다. 실제 저장 시엔 URLSearchParams가 퍼센트 인코딩하므로 archive.md
+      // 파일 자체에는 이 문자가 눈에 보이는 형태로 남지 않는다.
+      const ALT_SEP = String.fromCharCode(31);
+
       const params = new URLSearchParams(location.search);
       const imgs = (params.get("imgs") || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      const alts = (params.get("alts") || "").split(ALT_SEP);
       const video = params.get("video");
       const textPath = params.get("text");
 
@@ -139,10 +147,13 @@
       }
 
       if (imgs.length) {
-        imgs.forEach((src) => {
+        imgs.forEach((src, i) => {
           const img = document.createElement("img");
           img.src = src;
-          img.alt = "";
+          // 게시자가 직접 적어준 설명이 있으면 그걸 쓰고, 없으면 스크린 리더가
+          // 그림을 통째로 건너뛰지 않도록 최소한 순서 정보라도 대체 텍스트로 남긴다.
+          const alt = (alts[i] || "").trim();
+          img.alt = alt || `사진 ${i + 1}/${imgs.length}`;
           strip.appendChild(img);
         });
       } else if (video) {

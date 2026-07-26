@@ -314,25 +314,37 @@
     const node = g.selectAll('g.node')
       .data(nodes, (d) => d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : ''));
 
+    // 클릭과 키보드(Enter/Space) 둘 다에서 같은 동작을 하도록 함수로 뺀다.
+    function activateNode(d) {
+      markUpdateSeen(d.data.name);
+      if (d.data.url) {
+        window.open(d.data.url, '_blank', 'noopener');
+        return;
+      }
+      if (d.children) {
+        d._children = d.children;
+        d.children = null;
+      } else if (d._children) {
+        d.children = d._children;
+        d._children = null;
+      }
+      update(d);
+      fit();
+    }
+
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node')
       .attr('transform', nodeTransform(origin))
+      .attr('tabindex', 0)
+      .attr('role', 'button')
+      .attr('aria-label', (d) => (d.data.url ? `${d.data.name} (새 창에서 열기)` : `${d.data.name} (펼치기/접기)`))
       .style('cursor', 'pointer')
-      .on('click', (_event, d) => {
-        markUpdateSeen(d.data.name);
-        if (d.data.url) {
-          window.open(d.data.url, '_blank', 'noopener');
-          return;
+      .on('click', (_event, d) => activateNode(d))
+      .on('keydown', (event, d) => {
+        if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+          event.preventDefault();
+          activateNode(d);
         }
-        if (d.children) {
-          d._children = d.children;
-          d.children = null;
-        } else if (d._children) {
-          d.children = d._children;
-          d._children = null;
-        }
-        update(d);
-        fit();
       });
 
     // 가지 끝(루트 제외)에 은은하게 빛나는 점을 하나 그린다.
@@ -352,6 +364,7 @@
       .text((d) => d.data.name);
 
     const nodeMerge = nodeEnter.merge(node);
+    nodeMerge.attr('aria-expanded', (d) => (d.data.url ? null : String(Boolean(d.children))));
     nodeMerge.transition().duration(TRANSITION_MS)
       .attr('transform', nodeTransform);
     nodeMerge.select('circle.glow-tip')
@@ -408,28 +421,43 @@
     });
   }
 
-  // ---------- 5. 리스트 보기 토글 (모바일 등 트리 조작이 불편할 때 대안) ----------
-  function renderListHTML(node) {
+  // ---------- 5. 리스트 보기 (기본값) / 마인드맵 보기 토글 ----------
+  // 마인드맵(SVG)은 순전히 그림이라 키보드·스크린 리더로는 사실상 조작이 안 된다.
+  // 실제 <a href> 링크와 <h2>~<h5> 제목 구조를 가진 리스트 뷰를 기본으로 보여주고,
+  // 마인드맵은 원하는 사람만 눌러서 보는 보조 뷰로 둔다.
+  const HEADING_TAGS = ['h2', 'h3', 'h4', 'h5', 'h6'];
+  function headingTagFor(depth) {
+    return HEADING_TAGS[Math.min(depth, HEADING_TAGS.length - 1)];
+  }
+  function renderListHTML(node, depth) {
     if (!node.children || node.children.length === 0) {
       return node.url
         ? `<li><a href="${node.url}" target="_blank" rel="noopener">${node.name}</a></li>`
         : `<li>${node.name}</li>`;
     }
-    const items = node.children.map(renderListHTML).join('');
-    return `<details open><summary>${node.name}</summary><ul>${items}</ul></details>`;
+    const tag = headingTagFor(depth);
+    const items = node.children.map((c) => renderListHTML(c, depth + 1)).join('');
+    return `<details open><summary><${tag}>${node.name}</${tag}></summary><ul>${items}</ul></details>`;
   }
 
   const listView = document.getElementById('listView');
-  listView.innerHTML = `<ul>${(data.children || []).map(renderListHTML).join('')}</ul>`;
+  listView.innerHTML = `<ul>${(data.children || []).map((c) => renderListHTML(c, 0)).join('')}</ul>`;
 
   const treeEl = document.getElementById('tree');
   const listToggle = document.getElementById('listToggle');
-  let showingList = false;
-  listToggle.addEventListener('click', () => {
-    showingList = !showingList;
+  let showingList = true;
+  function applyViewState() {
     // SVG 요소는 hidden 프로퍼티가 속성으로 반영되지 않아 style.display로 직접 제어
     treeEl.style.display = showingList ? 'none' : '';
     listView.hidden = !showingList;
     listToggle.textContent = showingList ? '마인드맵으로 보기' : '리스트로 보기';
+  }
+  applyViewState();
+  listToggle.addEventListener('click', () => {
+    showingList = !showingList;
+    applyViewState();
+    // 마인드맵으로 바꿀 때: 숨겨져 있는 동안(display:none)엔 크기를 잴 수 없어
+    // "화면에 맞추기" 계산이 어긋나므로, 보이게 된 시점에 다시 맞춰준다.
+    if (!showingList) fit();
   });
 })();

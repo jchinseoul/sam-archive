@@ -25,6 +25,7 @@ const els = {
   level3New: document.getElementById('level3New'),
   title: document.getElementById('title'),
   imageFile: document.getElementById('imageFile'),
+  imageAlts: document.getElementById('imageAlts'),
   docFile: document.getElementById('docFile'),
   videoFile: document.getElementById('videoFile'),
   videoUrl: document.getElementById('videoUrl'),
@@ -44,6 +45,7 @@ const els = {
   editCurrentHint: document.getElementById('editCurrentHint'),
   editCurrentPreview: document.getElementById('editCurrentPreview'),
   editImageFile: document.getElementById('editImageFile'),
+  editImageAlts: document.getElementById('editImageAlts'),
   editDocFile: document.getElementById('editDocFile'),
   editVideoFile: document.getElementById('editVideoFile'),
   editVideoUrl: document.getElementById('editVideoUrl'),
@@ -344,22 +346,35 @@ async function updateArchiveMd(token, applyFn) {
   }
 }
 
-// gallery.html?imgs=...&video=...&text=... 링크에서 이미지/영상/설명글 경로를 뽑아낸다.
+// 이미지별 대체 텍스트(alts)는 콤마 대신 이 구분자로 잇는다. 설명 글에 콤마가
+// 들어있어도 안 깨지도록. gallery.html의 ALT_SEP과 반드시 같은 값이어야 한다.
+const ALT_SEP = String.fromCharCode(31);
+
+// gallery.html?imgs=...&alts=...&video=...&text=... 링크에서 이미지/설명/영상/설명글 경로를 뽑아낸다.
 function parseGalleryTarget(target) {
   const sp = new URLSearchParams(target.split('?')[1] || '');
   const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const alts = sp.has('alts') ? sp.get('alts').split(ALT_SEP) : [];
   const video = sp.get('video') || null;
   const textPath = sp.get('text') || null;
-  return { imgs, video, textPath };
+  return { imgs, alts, video, textPath };
 }
 
-// { imgs, video, textPath } 중 있는 것만으로 gallery.html 링크를 만든다.
-function buildGalleryTarget({ imgs, video, textPath }) {
+// { imgs, alts, video, textPath } 중 있는 것만으로 gallery.html 링크를 만든다.
+// alts는 imgs와 같은 순서의 배열이며, 전부 비어있으면 파라미터 자체를 생략한다.
+function buildGalleryTarget({ imgs, alts, video, textPath }) {
   const sp = new URLSearchParams();
   if (imgs && imgs.length) sp.set('imgs', imgs.join(','));
+  if (alts && alts.some((a) => (a || '').trim())) sp.set('alts', alts.map((a) => (a || '').trim()).join(ALT_SEP));
   if (video) sp.set('video', video);
   if (textPath) sp.set('text', textPath);
   return `gallery.html?${sp.toString()}`;
+}
+
+// 대체 텍스트 입력칸(줄바꿈으로 구분)을 이미지 개수만큼의 배열로 만든다.
+function parseAltsInput(text, count) {
+  const lines = (text || '').split('\n');
+  return Array.from({ length: count }, (_, i) => (lines[i] || '').trim());
 }
 
 // 게시물의 첨부(target)가 가리키는 assets/ 파일 경로 목록을 뽑아낸다.
@@ -716,6 +731,7 @@ async function openEdit(index) {
   editingLeaf = leaf;
   els.editTitle.value = leaf.title;
   els.editImageFile.value = '';
+  els.editImageAlts.value = '';
   els.editDocFile.value = '';
   els.editVideoFile.value = '';
   els.editVideoUrl.value = '';
@@ -736,15 +752,16 @@ async function openEdit(index) {
     return;
   }
   if (target.startsWith('gallery.html?')) {
-    const { imgs, video, textPath } = parseGalleryTarget(target);
+    const { imgs, alts, video, textPath } = parseGalleryTarget(target);
     if (imgs.length) {
-      els.editCurrentHint.textContent = `현재 이미지 ${imgs.length}장 — 아래 "글 내용"만 고치면 이미지는 그대로 유지됩니다.`;
+      els.editCurrentHint.textContent = `현재 이미지 ${imgs.length}장 — 아래 "글 내용"만 고치면 이미지는 그대로 유지됩니다. 새 이미지를 고르지 않으면 아래 "이미지 설명"도 무시되고 기존 설명이 그대로 유지됩니다.`;
       imgs.forEach((src) => {
         const img = document.createElement('img');
         img.src = src;
         img.style.cssText = 'max-height:110px;max-width:140px;object-fit:cover;border-radius:6px;margin:0 .4rem .4rem 0;';
         els.editCurrentPreview.append(img);
       });
+      els.editImageAlts.value = imgs.map((_, i) => alts[i] || '').join('\n');
     } else if (video) {
       const isExternal = /^https?:\/\//.test(video);
       els.editCurrentHint.textContent = `현재 영상 ${isExternal ? '링크' : '파일'} — 아래 "글 내용"만 고치면 영상은 그대로 유지됩니다.`;
@@ -869,18 +886,24 @@ els.editSaveBtn.addEventListener('click', async () => {
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
       }
-      newTarget = buildGalleryTarget({ imgs: paths, textPath });
+      const alts = parseAltsInput(els.editImageAlts.value, paths.length);
+      newTarget = buildGalleryTarget({ imgs: paths, alts, textPath });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (isGalleryPost) {
       // 새 이미지/영상을 안 골랐으면 기존 미디어(이미지 또는 영상)는 그대로 두고,
-      // 설명글만 새로 쓰거나(비우면) 지운다.
+      // 설명글만 새로 쓰거나(비우면) 지운다. 이미지 설명(alt)도 기존 값을 그대로 지킨다.
       let textPath = null;
       if (bodyText) {
         textPath = `assets/text-${timestampSlug()}.txt`;
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Update caption for "${title}"`);
       }
-      newTarget = buildGalleryTarget({ imgs: existingGallery.imgs, video: existingGallery.video, textPath });
+      newTarget = buildGalleryTarget({
+        imgs: existingGallery.imgs,
+        alts: existingGallery.alts,
+        video: existingGallery.video,
+        textPath,
+      });
       if (existingGallery.textPath) deleteOldAssets = [existingGallery.textPath];
     } else if (bodyText) {
       const textPath = `assets/post-${timestampSlug()}.txt`;
@@ -1026,7 +1049,8 @@ els.form.addEventListener('submit', async (e) => {
         setStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
       }
-      linkTarget = buildGalleryTarget({ imgs: paths, textPath });
+      const alts = parseAltsInput(els.imageAlts.value, paths.length);
+      linkTarget = buildGalleryTarget({ imgs: paths, alts, textPath });
     } else if (bodyText) {
       const textPath = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
@@ -1055,6 +1079,7 @@ els.form.addEventListener('submit', async (e) => {
 
     els.title.value = '';
     els.imageFile.value = '';
+    els.imageAlts.value = '';
     els.docFile.value = '';
     els.videoFile.value = '';
     els.videoUrl.value = '';

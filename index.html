@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
   </head>
   <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
     <header>
       <h1 id="homeLink" style="cursor: pointer">SAM ARCHIVE</h1>
       <div class="controls">
@@ -21,9 +22,9 @@
       </div>
     </header>
 
-    <main>
+    <main id="main" tabindex="-1">
       <svg id="tree"></svg>
-      <div id="listView" class="list-view" hidden></div>
+      <div id="listView" class="list-view"></div>
     </main>
 
     <script src="app.js"></script>
