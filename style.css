@@ -48,6 +48,21 @@ header {
 header h1 {
   font-size: 1.1rem;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.logo {
+  height: 3.6rem;
+  width: auto;
+  vertical-align: middle;
+}
+
+header h1 a {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
 }
 
 .controls {
@@ -102,6 +117,15 @@ main {
 
 /* ---- 마인드맵 노드 ---- */
 
+/* 태양계처럼: 각 노드가 도는 얇은 원형 궤도 */
+.orbit-ring {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1px;
+  opacity: .12;
+  pointer-events: none;
+}
+
 .link {
   fill: none;
   stroke-width: 1px;
@@ -113,7 +137,7 @@ main {
 }
 
 .node:hover circle {
-  r: 14;
+  r: 9;
 }
 
 /* 키보드로 포커스가 왔을 때(마우스 클릭 시에는 표시 안 함) 눈에 띄는 테두리 */

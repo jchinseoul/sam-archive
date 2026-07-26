@@ -7,14 +7,36 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 110;                // 부모-자식 간 반지름 간격 (깊이 방향, 전체적으로 짧게)
+  const NODE_DY = 170;                // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
   const INITIAL_VISIBLE_DEPTH = 0;    // 처음엔 중심 글자(루트)만 보여주고, 클릭하면 가지가 뻗어나옴
+  const PLANET_R_MIN = 2;             // 콘텐츠가 적은(리프) 노드의 "행성" 반지름
+  const PLANET_R_MAX = 9;             // 콘텐츠가 많은(하위 항목이 많은) 노드의 "행성" 반지름
+  const ORBIT_ANGULAR_K = 6;          // 공전 속도 상수. 반지름(y)이 작을수록(안쪽 궤도) 더 빠르게 돈다
+  const FOCUS_DISTANCE_BOOST = NODE_DY * 3.5; // 펼쳐진 노드를 자기 부모(태양계)로부터 이만큼 더 끌어내 놓는다
 
   const colorScale = d3.interpolateRgb(COLOR_TOP, COLOR_BOTTOM);
   const colorOf = (d) => colorScale(Math.min(d.depth / MAX_DEPTH, 1));
+
+  // 클릭한 노드는 그 자리에 완전히 멈춰 세운다(나머지 노드는 계속 공전한다).
+  const pausedNodes = new Set();
+
+  // 실제 태양계 행성 색을 흉내낸 팔레트. 태양(루트) 바로 다음 단계(depth 1)의
+  // 노드마다 등장 순서대로 하나씩 배정하고(수성→금성→지구→...), 그 아래(달/위성 격인
+  // depth 2, 3)는 자기 행성 색을 흰색 쪽으로 옅게 섞어 "같은 행성 계열의 위성"처럼 보이게 한다.
+  const PLANET_PALETTE = ['#b1aaa3', '#d9b38c', '#4f83cc', '#c1440e', '#c9974b', '#e3c16f', '#7fd4d1', '#4169e1'];
+  function planetColorOf(d) {
+    if (d.depth === 0) return '#fff';
+    let ancestor = d;
+    while (ancestor.depth > 1) ancestor = ancestor.parent;
+    const siblings = root.data.children || [];
+    const idx = Math.max(0, siblings.indexOf(ancestor.data));
+    const base = PLANET_PALETTE[idx % PLANET_PALETTE.length];
+    const moonMix = d.depth === 1 ? 0 : d.depth === 2 ? 0.45 : 0.7;
+    return moonMix === 0 ? base : d3.interpolateRgb(base, '#ffffff')(moonMix);
+  }
 
   // ---------- 1. archive.md → 계층 데이터 파싱 ----------
   const res = await fetch('archive.md', { cache: 'no-store' });
@@ -92,16 +114,16 @@
 
   const data = parseMarkdown(markdown);
 
-  // ---------- 2. d3 계층 + 트리 레이아웃 (SAM ARCHIVE를 중심으로 사방 360도 펼침) ----------
+  // ---------- 2. d3 계층 (SAM ARCHIVE를 중심으로 사방 360도 펼침) ----------
   const root = d3.hierarchy(data);
-  // 각도(x)만 0~2π로 배분받고, 반지름(y)은 아래에서 depth 기준으로 직접 계산한다.
-  const treeLayout = d3.tree()
-    .size([2 * Math.PI, 1])
-    .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth);
 
   // 접기 전에 "원래 하위 트리 크기"를 노드마다 미리 저장해둔다 (자기 자신 포함).
   // 나중에 접혔다 펼쳐졌다 해도 이 값은 안 바뀌어야 하므로 collapseBeyond보다 먼저 계산.
   root.each((d) => { d.__fullSize = d.descendants().length; });
+
+  // "행성" 크기 차등: 하위 콘텐츠가 많을수록(=__fullSize가 클수록) 큰 원으로 그린다.
+  const maxFullSize = d3.max(root.descendants().filter((d) => d.depth > 0), (d) => d.__fullSize) || 1;
+  const planetRadius = d3.scaleSqrt().domain([1, maxFullSize]).range([PLANET_R_MIN, PLANET_R_MAX]).clamp(true);
 
   // 처음엔 INITIAL_VISIBLE_DEPTH보다 깊은 노드는 접어둠
   function collapseBeyond(node, depth) {
@@ -120,14 +142,14 @@
   const svg = d3.select('#tree');
   const g = svg.append('g');
 
-  // 가지 끝(리프 쪽)에 은은하게 빛나는 효과를 주기 위한 블러 필터.
+  // 가지 끝(리프 쪽)에 밝게 빛나는 효과를 주기 위한 블러 필터.
   svg.append('defs').append('filter')
     .attr('id', 'branchGlow')
-    .attr('x', '-200%').attr('y', '-200%').attr('width', '500%').attr('height', '500%')
-    .html('<feGaussianBlur stdDeviation="4" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>');
+    .attr('x', '-300%').attr('y', '-300%').attr('width', '700%').attr('height', '700%')
+    .html('<feGaussianBlur stdDeviation="2.5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="blur" /><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>');
 
   const zoomBehavior = d3.zoom()
-    .scaleExtent([0.3, 3])
+    .scaleExtent([0.3, 24]) // 노드를 펼칠 때마다 확대해 들어가므로 최대 배율을 넉넉히 둔다
     .on('zoom', (event) => g.attr('transform', event.transform));
   svg.call(zoomBehavior);
 
@@ -152,12 +174,60 @@
   }
 
   // ---------- 4. 렌더링 ----------
-  // 극좌표(d.x=각도, d.y=반지름) → 화면 좌표 변환. 각도가 0~2π 전체를 돌며
-  // SAM ARCHIVE를 중심으로 사방(위·아래·좌·우 전부)에 가지가 뻗는다.
+  // d.x/d.y는 이제 "자기 부모로부터"의 각도·거리(로컬)다. 태양(루트)만 화면 중심(0,0)에
+  // 고정되고, 그 아래 모든 노드는 부모의 절대 좌표 + 이 로컬 오프셋으로 위치가 정해진다
+  // (행성이 태양을 돌고, 그 위성은 행성을 도는 것과 같은 구조).
   const cartesianX = (d) => d.y * Math.sin(d.x);
   const cartesianY = (d) => -d.y * Math.cos(d.x);
-  const nodeTransform = (d) => `translate(${cartesianX(d)},${cartesianY(d)})`;
-  const radialLink = d3.linkRadial().angle((d) => d.x).radius((d) => d.y);
+
+  // 부모→자식 순서로 내려가며 절대 좌표(__ax, __ay)를 누적 계산한다.
+  function computeAbsolutePositions() {
+    root.eachBefore((d) => {
+      if (!d.parent) {
+        d.__ax = 0;
+        d.__ay = 0;
+        return;
+      }
+      d.__ax = d.parent.__ax + cartesianX(d);
+      d.__ay = d.parent.__ay + cartesianY(d);
+    });
+  }
+  const absX = (d) => d.__ax;
+  const absY = (d) => d.__ay;
+  const nodeTransform = (d) => `translate(${absX(d)},${absY(d)})`;
+
+  // 클릭한 글자(노드)를 화면 정중앙으로 옮긴다. 방금 펼쳐서 하위 노드가 보이게 된
+  // 노드라면, 그 하위 노드들이 전부 화면 안에 들어오도록(한눈에 보이도록) 배율을 계산해서
+  // 확대·축소하고, 접을 때나 루트를 누를 때는 배율을 그대로 둔다.
+  function centerOnNode(d, { zoomIn = false } = {}) {
+    const svgRect = svg.node().getBoundingClientRect();
+    const currentScale = d3.zoomTransform(svg.node()).k;
+    const [minScale, maxScale] = zoomBehavior.scaleExtent();
+    let targetScale;
+    if (zoomIn) {
+      // d를 중심에 두고, 새로 보이는 자식들 중 가장 먼 것까지 화면 안에 들어오는 배율을 구한다.
+      let maxDist = 0;
+      (d.children || []).forEach((c) => {
+        const dx = absX(c) - absX(d);
+        const dy = absY(c) - absY(d);
+        maxDist = Math.max(maxDist, Math.sqrt(dx * dx + dy * dy));
+      });
+      const padding = 100;
+      const availableRadius = Math.min(svgRect.width, svgRect.height) / 2 - padding;
+      targetScale = maxDist > 0
+        ? Math.min(availableRadius / maxDist, maxScale)
+        : Math.min(currentScale * 1.3, maxScale);
+      targetScale = Math.max(minScale, targetScale);
+    } else {
+      targetScale = Math.max(minScale, Math.min(currentScale, maxScale));
+    }
+    const tx = svgRect.width / 2 - targetScale * absX(d);
+    const ty = svgRect.height / 2 - targetScale * absY(d);
+    svg.transition().duration(600).call(
+      zoomBehavior.transform,
+      d3.zoomIdentity.translate(tx, ty).scale(targetScale)
+    );
+  }
 
   // 노드마다 항상 같은 값이 나오는 의사난수(0~1) — 매번 다시 그려도 흔들리지 않으면서
   // 가지 길이·각도가 자연스럽게 들쭉날쭉해 보이게 만드는 용도.
@@ -172,6 +242,20 @@
   const ANGLE_JITTER = 0.16;      // 라디안, 약 ±9도
   const RADIUS_JITTER = 0.22;     // NODE_DY 대비 비율, 약 ±22%
 
+  // 노드가 "자기 부모를 도는" 로컬 각도. 같은 부모를 둔 형제끼리 0~2π를 균등하게
+  // 나눠 가지므로, 트리 전체에서 어느 위치에 있든 항상 부모를 완전히 한 바퀴
+  // 둘러싸며 퍼진다(트리 레이아웃이 배분한 전역 각도를 그대로 쓰면 한쪽으로 쏠릴 수 있다).
+  function siblingAngle(d) {
+    if (!d.parent) return 0;
+    const siblings = d.parent.children || [d];
+    const idx = Math.max(0, siblings.indexOf(d));
+    const count = siblings.length;
+    const parent = d.parent;
+    const parentKey = parent.data.name + '-' + parent.depth + '-' + (parent.parent ? parent.parent.data.name : '');
+    const rotationOffset = hash01(parentKey + '#rot') * 2 * Math.PI;
+    return (idx / count) * 2 * Math.PI + rotationOffset;
+  }
+
   // "연관도"의 대리 지표: 이 노드의 하위 트리가 부모의 하위 트리에서 차지하는
   // 비중. 부모 아래 콘텐츠의 큰 부분을 차지할수록(=구조적으로 강하게 연결될수록)
   // 연관도가 높다고 보고 가지를 짧게, 부모 대비 비중이 작은(곁가지성) 항목은
@@ -181,7 +265,7 @@
     if (!d.parent) return 0;
     return Math.min(1, d.__fullSize / d.parent.__fullSize);
   }
-  const RELEVANCE_SHRINK = 0.45; // 연관도가 1일 때 반지름을 최대 45%까지 줄임
+  const RELEVANCE_SHRINK = 0.25; // 연관도가 1일 때 반지름을 최대 25%까지만 줄임(너무 붙지 않게)
   const TRANSITION_MS = 450;     // 가지가 펼쳐지는 애니메이션 시간
 
   // 글씨 크기: 루트 36px → 1단계(호수) 20px → 2단계(세 번째 항목)부터는 13px로 통일
@@ -210,14 +294,20 @@
   const OVERLAP_PAD = 10;         // 라벨 사이 최소 여백(px)
   const OVERLAP_ITERATIONS = 400; // 겹침 해소 반복 횟수(노드 수가 적어 400번 반복해도 수 ms 이내)
 
-  function applyCartesian(d, cx, cy) {
+  // 겹침 해소는 절대 좌표(화면 픽셀) 기준으로 판단하지만, d.x/d.y는 "자기 부모로부터의"
+  // 로컬 각도·거리이므로 절대 좌표 이동분을 부모 기준 로컬 값으로 바꿔서 저장한다.
+  function applyCartesian(d, absCx, absCy) {
+    const parentAx = d.parent ? d.parent.__ax : 0;
+    const parentAy = d.parent ? d.parent.__ay : 0;
+    const cx = absCx - parentAx;
+    const cy = absCy - parentAy;
     const r = Math.sqrt(cx * cx + cy * cy);
     if (r < 1e-6) return; // 중심으로 완전히 붕괴하는 것만 방지
     d.y = Math.max(r, NODE_DY * 0.3);
     d.x = Math.atan2(cx, -cy);
   }
   function shiftCartesian(d, dCx, dCy) {
-    applyCartesian(d, cartesianX(d) + dCx, cartesianY(d) + dCy);
+    applyCartesian(d, absX(d) + dCx, absY(d) + dCy);
   }
 
   function resolveLabelOverlaps(nodesArr) {
@@ -238,10 +328,10 @@
         for (let j = i + 1; j < items.length; j++) {
           const a = items[i];
           const b = items[j];
-          const ax = cartesianX(a.d);
-          const ay = cartesianY(a.d) - a.labelDy;
-          const bx = cartesianX(b.d);
-          const by = cartesianY(b.d) - b.labelDy;
+          const ax = absX(a.d);
+          const ay = absY(a.d) - a.labelDy;
+          const bx = absX(b.d);
+          const by = absY(b.d) - b.labelDy;
           let dx = bx - ax;
           let dy = by - ay;
           const overlapX = a.halfW + b.halfW - Math.abs(dx);
@@ -271,43 +361,52 @@
   }
 
   function update(source) {
-    treeLayout(root);
     root.each((d) => {
       const key = d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
       const angleJitter = d.depth === 0 ? 0 : (hash01(key) - 0.5) * ANGLE_JITTER;
       const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * NODE_DY * RADIUS_JITTER;
       const rel = relevance(d);
-      const baseRadius = d.depth * NODE_DY * (1 - rel * RELEVANCE_SHRINK);
-      d.x = d.x + angleJitter; // 0~2π 그대로 사방으로 고르게 분배 + 미세한 각도 흔들림
-      d.y = d.depth === 0 ? 0 : Math.max(baseRadius + radiusJitter, NODE_DY * 0.4); // 연관도가 높을수록 가지가 짧아짐
+      const baseLocalRadius = NODE_DY * (1 - rel * RELEVANCE_SHRINK); // 자기 부모로부터의 거리(더는 루트 기준 누적이 아님)
+      // 실제 태양계처럼 궤도 거리가 확실히 들쭉날쭉하도록, 노드마다 0.55~2.3배 사이의
+      // 고정된(의사난수) 배율을 곱한다 — 그냥 미세한 흔들림(radiusJitter)만으로는 너무 밋밋하다.
+      const orbitTier = 0.55 + hash01(key + '#tier') * 1.75;
+      // 펼쳐서 하위 노드를 보여주는 중인 노드는 자기 부모(=태양계)에서 멀리 끌려나와,
+      // 그 하위 노드들이 자신을 중심으로 도는 별도의 작은 태양계처럼 보이게 한다.
+      const focusBoost = (d.parent && d.children) ? FOCUS_DISTANCE_BOOST : 0;
+      d.x = siblingAngle(d) + angleJitter; // 형제끼리 부모 둘레에 고르게 분배 + 미세한 각도 흔들림
+      d.y = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, NODE_DY * 0.4) + focusBoost;
     });
+    computeAbsolutePositions();
 
     const nodes = root.descendants();
     resolveLabelOverlaps(nodes);
+    computeAbsolutePositions(); // 겹침 해소로 바뀐 로컬 값을 절대 좌표에 다시 반영(자식들까지 연쇄 반영)
     previousKeys = new Set(nodes.map(keyOf));
 
-    const links = root.links();
     // 새로 나타나거나 사라지는 가지·글자는 클릭한 노드(source)의 현재 위치에서
     // 자라나거나 그 자리로 접혀 들어가는 것처럼 애니메이션한다.
-    const origin = { x: source.x, y: source.y };
+    const origin = { __ax: source.__ax, __ay: source.__ay };
 
-    // 가지(선)
-    const link = g.selectAll('path.link')
-      .data(links, (d) => d.target.data.name + '-' + d.target.depth + '-' + (d.target.parent ? d.target.parent.data.name : ''));
+    // 태양계 궤도: 각 노드는 "자기 부모"를 중심으로 자기 반지름(y)만큼 떨어진 원형 궤도를 돈다.
+    // 가지·노드보다 먼저 그려서 항상 맨 뒤에 깔리게 한다.
+    const orbitNodes = nodes.filter((d) => d.depth > 0);
+    const orbit = g.selectAll('circle.orbit-ring')
+      .data(orbitNodes, (d) => d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : ''));
 
-    const linkEnter = link.enter().append('path')
-      .attr('class', 'link')
-      .attr('stroke', (d) => colorOf(d.target))
-      .attr('d', radialLink({ source: origin, target: origin }));
-
-    linkEnter.merge(link)
+    orbit.enter().insert('circle', ':first-child')
+      .attr('class', 'orbit-ring')
+      .attr('cx', origin.__ax)
+      .attr('cy', origin.__ay)
+      .attr('r', 0)
+      .merge(orbit)
       .transition().duration(TRANSITION_MS)
-      .attr('stroke', (d) => colorOf(d.target))
-      .attr('d', radialLink);
+      .attr('cx', (d) => absX(d.parent))
+      .attr('cy', (d) => absY(d.parent))
+      .attr('r', (d) => d.y);
 
-    link.exit()
+    orbit.exit()
       .transition().duration(TRANSITION_MS)
-      .attr('d', radialLink({ source: origin, target: origin }))
+      .attr('r', 0)
       .remove();
 
     // 노드(텍스트만)
@@ -321,6 +420,7 @@
         window.open(d.data.url, '_blank', 'noopener');
         return;
       }
+      const willExpand = !d.children && !!d._children;
       if (d.children) {
         d._children = d.children;
         d.children = null;
@@ -328,8 +428,10 @@
         d.children = d._children;
         d._children = null;
       }
+      // 클릭한 노드는 그 자리에 완전히 멈춰 세운다(나머지는 계속 공전).
+      pausedNodes.add(d);
       update(d);
-      fit();
+      centerOnNode(d, { zoomIn: willExpand });
     }
 
     const nodeEnter = node.enter().append('g')
@@ -347,15 +449,34 @@
         }
       });
 
-    // 가지 끝(루트 제외)에 은은하게 빛나는 점을 하나 그린다.
+    // 부모까지 이어지는 가지(선). 각 노드의 <g> 안에 로컬 좌표(0,0 → 부모 방향)로 그려서,
+    // 노드가 이동/회전할 때 별도 계산 없이 함께 따라오게 한다.
+    nodeEnter.filter((d) => d.depth > 0).insert('line', ':first-child')
+      .attr('class', 'link')
+      .attr('stroke', (d) => colorOf(d))
+      .attr('x1', 0).attr('y1', 0)
+      .attr('x2', 0).attr('y2', 0);
+
+    // 가지 끝(루트 제외)을 "행성"처럼 그린다. 하위 콘텐츠가 많을수록 크게, 실제 태양계
+    // 행성 색에 가깝게, 그리고 밝게 빛난다.
     nodeEnter.filter((d) => d.depth > 0).append('circle')
       .attr('class', 'glow-tip')
-      .attr('r', 3)
-      .style('fill', (d) => colorOf(d))
+      .attr('r', 0)
+      .style('fill', (d) => planetColorOf(d))
       .style('filter', 'url(#branchGlow)')
       .style('opacity', 0);
 
-    nodeEnter.append('text')
+    // 루트(마인드맵 정중앙)에는 "SAM ARCHIVE" 글자 대신 로고 이미지만 그 지점에 그린다.
+    const ROOT_LOGO_SIZE = 140;
+    nodeEnter.filter((d) => d.depth === 0).append('image')
+      .attr('class', 'root-logo')
+      .attr('href', 'logo.png')
+      .attr('x', -ROOT_LOGO_SIZE / 2)
+      .attr('y', -ROOT_LOGO_SIZE / 2)
+      .attr('width', ROOT_LOGO_SIZE)
+      .attr('height', ROOT_LOGO_SIZE);
+
+    nodeEnter.filter((d) => d.depth > 0).append('text')
       .attr('class', 'node-label')
       .attr('dy', '-1.1em')
       .attr('text-anchor', 'middle')
@@ -367,10 +488,16 @@
     nodeMerge.attr('aria-expanded', (d) => (d.data.url ? null : String(Boolean(d.children))));
     nodeMerge.transition().duration(TRANSITION_MS)
       .attr('transform', nodeTransform);
-    nodeMerge.select('circle.glow-tip')
-      .style('fill', (d) => colorOf(d))
+    nodeMerge.select('line.link')
+      .style('stroke', (d) => colorOf(d))
       .transition().duration(TRANSITION_MS)
-      .style('opacity', 0.85);
+      .attr('x2', (d) => -cartesianX(d))
+      .attr('y2', (d) => -cartesianY(d));
+    nodeMerge.select('circle.glow-tip')
+      .style('fill', (d) => planetColorOf(d))
+      .transition().duration(TRANSITION_MS)
+      .attr('r', (d) => planetRadius(d.__fullSize))
+      .style('opacity', 1);
     nodeMerge.select('text')
       .style('font-size', (d) => fontSizeFor(d.depth))
       .text((d) => d.data.name)
@@ -381,8 +508,9 @@
     nodeMerge.each(function (d) {
       const nodeGroup = d3.select(this);
       let badge = nodeGroup.select('circle.new-badge');
-      if (isRecentlyUpdated(d.data.name)) {
-        const textBBox = this.querySelector('text').getBBox();
+      const textEl = this.querySelector('text');
+      if (textEl && isRecentlyUpdated(d.data.name)) {
+        const textBBox = textEl.getBBox();
         const bx = textBBox.x + textBBox.width + 2;
         const by = textBBox.y;
         if (badge.empty()) {
@@ -406,17 +534,46 @@
       .remove();
   }
 
+  // ---------- 태양계처럼: 느린 공전 애니메이션 ----------
+  // 각 노드는 "자기 부모"를 중심으로 자기 반지름(y)만큼 떨어져 도므로, 매 프레임 d.x(부모
+  // 기준 각도)를 아주 조금씩 늘리고 위에서 아래로(부모→자식) 절대 좌표를 다시 누적 계산한다
+  // (부모가 같이 움직이면 그 자식도 함께 실려간다 — 행성이 돌면 위성도 같이 따라 도는 것과 같다).
+  // 안쪽 궤도(반지름이 작을수록)일수록 더 빠르게 돈다. 클릭해서 멈춘 노드(pausedNodes)는
+  // 계속 멈춰 있고 나머지는 계속 돈다.
+  let lastOrbitElapsed = 0;
+  d3.timer((elapsed) => {
+    if (treeEl.style.display === 'none') {
+      lastOrbitElapsed = elapsed;
+      return;
+    }
+    const dt = (elapsed - lastOrbitElapsed) / 1000;
+    lastOrbitElapsed = elapsed;
+    root.each((d) => {
+      if (d.depth > 0 && !pausedNodes.has(d)) d.x += dt * (ORBIT_ANGULAR_K / d.y);
+    });
+    computeAbsolutePositions();
+    g.selectAll('g.node').attr('transform', nodeTransform);
+    g.selectAll('line.link')
+      .attr('x2', (d) => -cartesianX(d))
+      .attr('y2', (d) => -cartesianY(d));
+    g.selectAll('circle.orbit-ring')
+      .attr('cx', (d) => absX(d.parent))
+      .attr('cy', (d) => absY(d.parent));
+  });
+
   update(root);
   requestAnimationFrame(fit);
   window.addEventListener('resize', fit);
   document.getElementById('fitBtn').addEventListener('click', fit);
 
-  // 좌측 상단 "SAM ARCHIVE" 클릭 시 처음 상태(중심 글자만)로 되돌아가 화면 중앙에 맞춘다.
+  // 좌측 상단 로고 클릭 시 처음 상태(중심 글자만)로 되돌아가 마인드맵을 화면 중앙에 맞춘다.
   const homeLink = document.getElementById('homeLink');
   if (homeLink) {
     homeLink.addEventListener('click', () => {
       collapseBeyond(root, 0);
       update(root);
+      showingList = false;
+      applyViewState();
       fit();
     });
   }
@@ -445,7 +602,9 @@
 
   const treeEl = document.getElementById('tree');
   const listToggle = document.getElementById('listToggle');
-  let showingList = true;
+  // 다른 페이지의 로고/뒤로가기 링크가 index.html#mindmap 형태로 들어오면
+  // 리스트 보기 대신 마인드맵을 바로 보여준다.
+  let showingList = location.hash !== '#mindmap';
   function applyViewState() {
     // SVG 요소는 hidden 프로퍼티가 속성으로 반영되지 않아 style.display로 직접 제어
     treeEl.style.display = showingList ? 'none' : '';
@@ -453,6 +612,7 @@
     listToggle.textContent = showingList ? '마인드맵으로 보기' : '리스트로 보기';
   }
   applyViewState();
+  if (!showingList) fit();
   listToggle.addEventListener('click', () => {
     showingList = !showingList;
     applyViewState();
