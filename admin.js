@@ -350,24 +350,27 @@ async function updateArchiveMd(token, applyFn) {
 // 들어있어도 안 깨지도록. gallery.html의 ALT_SEP과 반드시 같은 값이어야 한다.
 const ALT_SEP = String.fromCharCode(31);
 
-// gallery.html?imgs=...&alts=...&video=...&text=... 링크에서 이미지/설명/영상/설명글 경로를 뽑아낸다.
+// gallery.html?imgs=...&alts=...&video=...&text=...&title=... 링크에서 이미지/설명/영상/설명글/제목 경로를 뽑아낸다.
 function parseGalleryTarget(target) {
   const sp = new URLSearchParams(target.split('?')[1] || '');
   const imgs = (sp.get('imgs') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const alts = sp.has('alts') ? sp.get('alts').split(ALT_SEP) : [];
   const video = sp.get('video') || null;
   const textPath = sp.get('text') || null;
-  return { imgs, alts, video, textPath };
+  const title = sp.get('title') || null;
+  return { imgs, alts, video, textPath, title };
 }
 
-// { imgs, alts, video, textPath } 중 있는 것만으로 gallery.html 링크를 만든다.
+// { imgs, alts, video, textPath, title } 중 있는 것만으로 gallery.html 링크를 만든다.
 // alts는 imgs와 같은 순서의 배열이며, 전부 비어있으면 파라미터 자체를 생략한다.
-function buildGalleryTarget({ imgs, alts, video, textPath }) {
+// title은 갤러리 페이지에서 제목을 보여주는 용도(archive.md의 링크 글자와 별개로 전달).
+function buildGalleryTarget({ imgs, alts, video, textPath, title }) {
   const sp = new URLSearchParams();
   if (imgs && imgs.length) sp.set('imgs', imgs.join(','));
   if (alts && alts.some((a) => (a || '').trim())) sp.set('alts', alts.map((a) => (a || '').trim()).join(ALT_SEP));
   if (video) sp.set('video', video);
   if (textPath) sp.set('text', textPath);
+  if (title) sp.set('title', title);
   return `gallery.html?${sp.toString()}`;
 }
 
@@ -845,7 +848,7 @@ els.editSaveBtn.addEventListener('click', async () => {
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
       }
-      newTarget = buildGalleryTarget({ video: videoUrl, textPath });
+      newTarget = buildGalleryTarget({ video: videoUrl, textPath, title });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (videoFile) {
       const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
@@ -858,7 +861,7 @@ els.editSaveBtn.addEventListener('click', async () => {
         setEditStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
       }
-      newTarget = buildGalleryTarget({ video: videoPath, textPath });
+      newTarget = buildGalleryTarget({ video: videoPath, textPath, title });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (docFile) {
       const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
@@ -887,7 +890,7 @@ els.editSaveBtn.addEventListener('click', async () => {
         await ghPutText(textPath, token, bodyText, `Replace caption for "${title}"`);
       }
       const alts = parseAltsInput(els.editImageAlts.value, paths.length);
-      newTarget = buildGalleryTarget({ imgs: paths, alts, textPath });
+      newTarget = buildGalleryTarget({ imgs: paths, alts, textPath, title });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     } else if (isGalleryPost) {
       // 새 이미지/영상을 안 골랐으면 기존 미디어(이미지 또는 영상)는 그대로 두고,
@@ -903,13 +906,14 @@ els.editSaveBtn.addEventListener('click', async () => {
         alts: existingGallery.alts,
         video: existingGallery.video,
         textPath,
+        title,
       });
       if (existingGallery.textPath) deleteOldAssets = [existingGallery.textPath];
     } else if (bodyText) {
       const textPath = `assets/post-${timestampSlug()}.txt`;
       setEditStatus('글 파일 업로드 중...');
       await ghPutText(textPath, token, bodyText, `Replace post text for "${title}"`);
-      newTarget = buildGalleryTarget({ textPath });
+      newTarget = buildGalleryTarget({ textPath, title });
       deleteOldAssets = extractAssetPaths(editingLeaf.target);
     }
 
@@ -1006,7 +1010,7 @@ els.form.addEventListener('submit', async (e) => {
         setStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
       }
-      linkTarget = buildGalleryTarget({ video: videoUrl, textPath });
+      linkTarget = buildGalleryTarget({ video: videoUrl, textPath, title });
     } else if (videoFile) {
       const ext = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
       const videoPath = `assets/video-${timestampSlug()}.${ext}`;
@@ -1019,7 +1023,7 @@ els.form.addEventListener('submit', async (e) => {
         setStatus('설명 글 업로드 중...');
         await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
       }
-      linkTarget = buildGalleryTarget({ video: videoPath, textPath });
+      linkTarget = buildGalleryTarget({ video: videoPath, textPath, title });
     } else if (docFile) {
       const ext = (docFile.name.split('.').pop() || 'pdf').toLowerCase();
       linkTarget = `assets/doc-${timestampSlug()}.${ext}`;
@@ -1050,12 +1054,12 @@ els.form.addEventListener('submit', async (e) => {
         await ghPutText(textPath, token, bodyText, `Add caption for "${title}"`);
       }
       const alts = parseAltsInput(els.imageAlts.value, paths.length);
-      linkTarget = buildGalleryTarget({ imgs: paths, alts, textPath });
+      linkTarget = buildGalleryTarget({ imgs: paths, alts, textPath, title });
     } else if (bodyText) {
       const textPath = `assets/post-${timestampSlug()}.txt`;
       setStatus('글 파일 업로드 중...');
       await ghPutText(textPath, token, bodyText, `Add post text for "${title}"`);
-      linkTarget = buildGalleryTarget({ textPath });
+      linkTarget = buildGalleryTarget({ textPath, title });
     }
 
     setStatus('archive.md 갱신 중...');

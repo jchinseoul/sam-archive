@@ -7,7 +7,8 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 95;                 // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
+  const NODE_DY = 55;                 // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
+  const ROOT_CLEARANCE = 85;          // 태양(루트) 로고와 겹치지 않도록 depth 1 노드에게 주는 최소 거리
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
@@ -381,7 +382,9 @@
       // 고정된(의사난수) 배율을 곱한다 — 그냥 미세한 흔들림(radiusJitter)만으로는 너무 밋밋하다.
       const orbitTier = 0.55 + hash01(key + '#tier') * 1.75;
       const localAngle = siblingAngle(d) + angleJitter; // 형제끼리 부모 둘레에 고르게 분배 + 미세한 각도 흔들림
-      const localRadius = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, NODE_DY * 0.4);
+      // depth 1(태양 바로 다음)은 큰 로고 이미지와 겹치지 않도록 최소 거리를 더 넉넉히 둔다.
+      const minRadius = d.depth === 1 ? ROOT_CLEARANCE : NODE_DY * 0.4;
+      const localRadius = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, minRadius);
 
       // 펼쳐서 하위 노드를 보여주는 중인 노드는 자기 부모(=태양계)에서 멀리 끌려나와,
       // 그 하위 노드들이 자신을 중심으로 도는 별도의 작은 태양계처럼 보이게 한다. 그냥
@@ -413,6 +416,11 @@
 
     const nodes = root.descendants();
     resolveLabelOverlaps(nodes);
+    // 겹침 해소 과정에서 depth 1 노드가 최소 거리(ROOT_CLEARANCE)보다 안쪽으로 밀려
+    // 들어와 태양 로고와 겹치지 않도록 다시 한번 확인한다.
+    root.each((d) => {
+      if (d.depth === 1 && d.y < ROOT_CLEARANCE) d.y = ROOT_CLEARANCE;
+    });
     computeAbsolutePositions(); // 겹침 해소로 바뀐 로컬 값을 절대 좌표에 다시 반영(자식들까지 연쇄 반영)
     previousKeys = new Set(nodes.map(keyOf));
 
