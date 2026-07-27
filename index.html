@@ -16,9 +16,16 @@
     <a class="skip-link" href="#main">본문 바로가기</a>
     <header>
       <h1 id="homeLink" style="cursor: pointer">
-        <img src="logo.png" alt="SAM ARCHIVE" class="logo" />
+        <picture>
+          <source srcset="logo-light.png" media="(prefers-color-scheme: light)" />
+          <img src="logo.png" alt="SAM ARCHIVE" class="logo" />
+        </picture>
       </h1>
       <div class="controls">
+        <button id="backBtn" type="button" disabled>← 뒤로가기</button>
+        <button id="forwardBtn" type="button" disabled>앞으로 가기 →</button>
+        <button id="zoomOutBtn" type="button" aria-label="축소">－</button>
+        <button id="zoomInBtn" type="button" aria-label="확대">＋</button>
         <button id="fitBtn" type="button">화면에 맞추기</button>
         <button id="listToggle" type="button">리스트로 보기</button>
       </div>

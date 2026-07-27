@@ -7,21 +7,31 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 170;                // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
+  const NODE_DY = 130;                // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
   const INITIAL_VISIBLE_DEPTH = 0;    // 처음엔 중심 글자(루트)만 보여주고, 클릭하면 가지가 뻗어나옴
   const PLANET_R_MIN = 2;             // 콘텐츠가 적은(리프) 노드의 "행성" 반지름
   const PLANET_R_MAX = 9;             // 콘텐츠가 많은(하위 항목이 많은) 노드의 "행성" 반지름
-  const ORBIT_ANGULAR_K = 6;          // 공전 속도 상수. 반지름(y)이 작을수록(안쪽 궤도) 더 빠르게 돈다
+  const ORBIT_ANGULAR_K = 8;          // 공전 속도 상수. 반지름(y)이 작을수록(안쪽 궤도) 더 빠르게 돈다
   const FOCUS_DISTANCE_BOOST = NODE_DY * 3.5; // 펼쳐진 노드를 자기 부모(태양계)로부터 이만큼 더 끌어내 놓는다
 
   const colorScale = d3.interpolateRgb(COLOR_TOP, COLOR_BOTTOM);
   const colorOf = (d) => colorScale(Math.min(d.depth / MAX_DEPTH, 1));
 
+  // 배경이 흰색(밝은 테마)일 땐 밝은 배경에 어울리는 로고를, 어두운 테마일 땐 기존 로고를 쓴다.
+  const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
+  const currentLogoHref = () => (lightSchemeQuery.matches ? 'logo-light.png' : 'logo.png');
+
   // 클릭한 노드는 그 자리에 완전히 멈춰 세운다(나머지 노드는 계속 공전한다).
   const pausedNodes = new Set();
+
+  // 노드를 펼친 순서를 기록해 뒤로가기/앞으로 가기(undo/redo)에 사용한다.
+  // historyPos는 "현재 적용된 펼치기 개수"를 가리키며, 이보다 뒤쪽(historyPos 이후)은
+  // 아직 안 펼쳐졌거나(뒤로가기로 되돌아간) "다시 갈 수 있는" 상태다.
+  let expandHistory = [];
+  let historyPos = 0;
 
   // 실제 태양계 행성 색을 흉내낸 팔레트. 태양(루트) 바로 다음 단계(depth 1)의
   // 노드마다 등장 순서대로 하나씩 배정하고(수성→금성→지구→...), 그 아래(달/위성 격인
@@ -239,7 +249,7 @@
     }
     return ((h >>> 0) % 10000) / 10000;
   }
-  const ANGLE_JITTER = 0.16;      // 라디안, 약 ±9도
+  const ANGLE_JITTER = 0.8;       // 라디안, 약 ±23도 (형제가 정확히 균등 분배 각도에 딱 붙지 않도록)
   const RADIUS_JITTER = 0.22;     // NODE_DY 대비 비율, 약 ±22%
 
   // 노드가 "자기 부모를 도는" 로컬 각도. 같은 부모를 둔 형제끼리 0~2π를 균등하게
@@ -370,11 +380,34 @@
       // 실제 태양계처럼 궤도 거리가 확실히 들쭉날쭉하도록, 노드마다 0.55~2.3배 사이의
       // 고정된(의사난수) 배율을 곱한다 — 그냥 미세한 흔들림(radiusJitter)만으로는 너무 밋밋하다.
       const orbitTier = 0.55 + hash01(key + '#tier') * 1.75;
+      const localAngle = siblingAngle(d) + angleJitter; // 형제끼리 부모 둘레에 고르게 분배 + 미세한 각도 흔들림
+      const localRadius = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, NODE_DY * 0.4);
+
       // 펼쳐서 하위 노드를 보여주는 중인 노드는 자기 부모(=태양계)에서 멀리 끌려나와,
-      // 그 하위 노드들이 자신을 중심으로 도는 별도의 작은 태양계처럼 보이게 한다.
-      const focusBoost = (d.parent && d.children) ? FOCUS_DISTANCE_BOOST : 0;
-      d.x = siblingAngle(d) + angleJitter; // 형제끼리 부모 둘레에 고르게 분배 + 미세한 각도 흔들림
-      d.y = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, NODE_DY * 0.4) + focusBoost;
+      // 그 하위 노드들이 자신을 중심으로 도는 별도의 작은 태양계처럼 보이게 한다. 그냥
+      // 부모 기준 각도 방향으로 밀면 방향에 따라 기존 태양계 쪽으로 다시 겹쳐 들어올 수
+      // 있으므로, 태양(루트)에서 더 멀어지는 방향으로 밀어낸다.
+      if (d.parent && d.children) {
+        const parentAx = d.parent.__ax || 0;
+        const parentAy = d.parent.__ay || 0;
+        const estAx = parentAx + localRadius * Math.sin(localAngle);
+        const estAy = parentAy - localRadius * Math.cos(localAngle);
+        const distFromRoot = Math.sqrt(estAx * estAx + estAy * estAy) || 1;
+        const dirX = estAx / distFromRoot;
+        const dirY = estAy / distFromRoot;
+        const boostedAx = estAx + dirX * FOCUS_DISTANCE_BOOST;
+        const boostedAy = estAy + dirY * FOCUS_DISTANCE_BOOST;
+        const localBoostedX = boostedAx - parentAx;
+        const localBoostedY = boostedAy - parentAy;
+        d.y = Math.sqrt(localBoostedX * localBoostedX + localBoostedY * localBoostedY);
+        d.x = Math.atan2(localBoostedX, -localBoostedY);
+      } else {
+        d.x = localAngle;
+        d.y = localRadius;
+      }
+      // 반지름만으로는 공전 속도가 비슷한 노드끼리 묶여 보일 수 있어, 노드마다 고정된
+      // 배율(0.6~1.8배)을 추가로 곱해 서로 확실히 다른 속도로 돌게 한다.
+      d.__speedMul = 0.6 + hash01(key + '#speed') * 1.2;
     });
     computeAbsolutePositions();
 
@@ -424,14 +457,28 @@
       if (d.children) {
         d._children = d.children;
         d.children = null;
+        // 노드를 다시 눌러서 직접 접으면, 그 이후의 "앞으로 가기" 기록은 더 이상
+        // 의미가 없으므로 이 노드부터 잘라낸다(브라우저에서 새 링크를 누르면 기존
+        // "앞으로 가기" 기록이 사라지는 것과 같다).
+        const idx = expandHistory.indexOf(d);
+        if (idx !== -1) {
+          expandHistory.length = idx;
+          historyPos = Math.min(historyPos, idx);
+        }
       } else if (d._children) {
         d.children = d._children;
         d._children = null;
+        expandHistory.length = historyPos; // 뒤로가기 한 뒤 새로 펼치면 그 뒤 기록은 버린다
+        expandHistory.push(d);
+        historyPos = expandHistory.length;
       }
-      // 클릭한 노드는 그 자리에 완전히 멈춰 세운다(나머지는 계속 공전).
-      pausedNodes.add(d);
+      // 펼치는 중인 노드는 그 자리에 완전히 멈춰 세운다(나머지는 계속 공전). 다시 눌러서
+      // 원래 자리로 접으면 멈춤을 풀어서 다시 공전을 시작한다.
+      if (willExpand) pausedNodes.add(d);
+      else pausedNodes.delete(d);
       update(d);
       centerOnNode(d, { zoomIn: willExpand });
+      updateHistoryButtons();
     }
 
     const nodeEnter = node.enter().append('g')
@@ -470,7 +517,7 @@
     const ROOT_LOGO_SIZE = 140;
     nodeEnter.filter((d) => d.depth === 0).append('image')
       .attr('class', 'root-logo')
-      .attr('href', 'logo.png')
+      .attr('href', currentLogoHref())
       .attr('x', -ROOT_LOGO_SIZE / 2)
       .attr('y', -ROOT_LOGO_SIZE / 2)
       .attr('width', ROOT_LOGO_SIZE)
@@ -549,7 +596,7 @@
     const dt = (elapsed - lastOrbitElapsed) / 1000;
     lastOrbitElapsed = elapsed;
     root.each((d) => {
-      if (d.depth > 0 && !pausedNodes.has(d)) d.x += dt * (ORBIT_ANGULAR_K / d.y);
+      if (d.depth > 0 && !pausedNodes.has(d)) d.x += dt * (ORBIT_ANGULAR_K / d.y) * (d.__speedMul || 1);
     });
     computeAbsolutePositions();
     g.selectAll('g.node').attr('transform', nodeTransform);
@@ -561,7 +608,78 @@
       .attr('cy', (d) => absY(d.parent));
   });
 
+  // ---------- 뒤로가기 / 앞으로 가기 (펼치기 기록을 되감기/다시 감기) ----------
+  const backBtn = document.getElementById('backBtn');
+  const forwardBtn = document.getElementById('forwardBtn');
+  function updateHistoryButtons() {
+    backBtn.disabled = historyPos === 0;
+    forwardBtn.disabled = historyPos >= expandHistory.length;
+  }
+  function goBack() {
+    if (historyPos === 0) return;
+    historyPos -= 1;
+    const d = expandHistory[historyPos];
+    if (d.children) {
+      d._children = d.children;
+      d.children = null;
+    }
+    pausedNodes.delete(d); // 되돌아왔으니 다시 공전을 재개한다
+    update(d);
+    if (d.parent) centerOnNode(d.parent, { zoomIn: true });
+    else fit();
+    updateHistoryButtons();
+  }
+  function goForward() {
+    if (historyPos >= expandHistory.length) return;
+    const d = expandHistory[historyPos];
+    historyPos += 1;
+    if (d._children) {
+      d.children = d._children;
+      d._children = null;
+    }
+    pausedNodes.add(d);
+    update(d);
+    centerOnNode(d, { zoomIn: true });
+    updateHistoryButtons();
+  }
+  backBtn.addEventListener('click', goBack);
+  forwardBtn.addEventListener('click', goForward);
+
+  // ---------- 확대 / 축소 버튼 (누르고 있으면 계속 확대·축소된다) ----------
+  function wireHoldToRepeat(el, factor) {
+    let timeoutId = null;
+    let intervalId = null;
+    const step = (instant) => {
+      if (instant) svg.call(zoomBehavior.scaleBy, factor);
+      else svg.transition().duration(200).call(zoomBehavior.scaleBy, factor);
+    };
+    const start = (event) => {
+      event.preventDefault();
+      step(false);
+      timeoutId = setTimeout(() => {
+        intervalId = setInterval(() => step(true), 80);
+      }, 350);
+    };
+    const stop = () => {
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+      timeoutId = null;
+      intervalId = null;
+    };
+    el.addEventListener('mousedown', start);
+    el.addEventListener('touchstart', start, { passive: false });
+    ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((evt) => el.addEventListener(evt, stop));
+  }
+  wireHoldToRepeat(document.getElementById('zoomInBtn'), 1.4);
+  wireHoldToRepeat(document.getElementById('zoomOutBtn'), 1 / 1.4);
+
+  // OS/브라우저 테마가 실시간으로 바뀌면 중심 로고도 즉시 맞춰 바꾼다.
+  lightSchemeQuery.addEventListener('change', () => {
+    g.select('image.root-logo').attr('href', currentLogoHref());
+  });
+
   update(root);
+  updateHistoryButtons();
   requestAnimationFrame(fit);
   window.addEventListener('resize', fit);
   document.getElementById('fitBtn').addEventListener('click', fit);
@@ -571,6 +689,9 @@
   if (homeLink) {
     homeLink.addEventListener('click', () => {
       collapseBeyond(root, 0);
+      expandHistory = [];
+      historyPos = 0;
+      updateHistoryButtons();
       update(root);
       showingList = false;
       applyViewState();

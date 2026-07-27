@@ -80,6 +80,11 @@ header h1 a {
   cursor: pointer;
 }
 
+.controls button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
 /* 본문 바로가기(스킵 링크) — 평소엔 화면 밖에 숨겨두고, 키보드 포커스를 받으면 나타난다 */
 .skip-link {
   position: absolute;
