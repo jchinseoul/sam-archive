@@ -18,6 +18,23 @@
   }
 }
 
+/* 버튼으로 수동 전환한 테마는 시스템 설정보다 우선한다 (theme.js가 data-theme을 붙인다). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --border: #e0e0e0;
+  --border-strong: #767676;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14181a;
+  --fg: #eaeaea;
+  --border: #333;
+  --border-strong: #8a8a8a;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -83,6 +100,23 @@ header h1 a {
 .controls button:disabled {
   opacity: .35;
   cursor: default;
+}
+
+.theme-toggle-btn {
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 /* 본문 바로가기(스킵 링크) — 평소엔 화면 밖에 숨겨두고, 키보드 포커스를 받으면 나타난다 */

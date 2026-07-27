@@ -7,7 +7,12 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 55;                 // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
+  // 태양(루트) 바로 다음 단계(depth 1, "태양계" 행성들)의 간격과, 그 아래(depth 2+,
+  // 위성/게시물)의 간격을 따로 둔다 — "태양계 간격은 그대로, 그 아래만 좁혀달라"는
+  // 요청에 맞춰 depth 1은 넉넉하게, depth 2부터는 훨씬 좁게 잡는다.
+  const NODE_DY_OUTER = 130;          // depth 1(태양계 행성)의 부모-자식 간 반지름 간격
+  const NODE_DY_INNER = 45;           // depth 2 이상(위성/게시물)의 부모-자식 간 반지름 간격
+  const nodeGap = (d) => (d.depth === 1 ? NODE_DY_OUTER : NODE_DY_INNER);
   const ROOT_CLEARANCE = 85;          // 태양(루트) 로고와 겹치지 않도록 depth 1 노드에게 주는 최소 거리
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
@@ -16,14 +21,29 @@
   const PLANET_R_MIN = 2;             // 콘텐츠가 적은(리프) 노드의 "행성" 반지름
   const PLANET_R_MAX = 9;             // 콘텐츠가 많은(하위 항목이 많은) 노드의 "행성" 반지름
   const ORBIT_ANGULAR_K = 8;          // 공전 속도 상수. 반지름(y)이 작을수록(안쪽 궤도) 더 빠르게 돈다
-  const FOCUS_DISTANCE_BOOST = NODE_DY * 3.5; // 펼쳐진 노드를 자기 부모(태양계)로부터 이만큼 더 끌어내 놓는다
+  const FOCUS_DISTANCE_BOOST = 300;   // 펼쳐진 노드를 자기 부모(태양계)로부터 이만큼 더 끌어내 놓는다
 
   const colorScale = d3.interpolateRgb(COLOR_TOP, COLOR_BOTTOM);
   const colorOf = (d) => colorScale(Math.min(d.depth / MAX_DEPTH, 1));
 
   // 배경이 흰색(밝은 테마)일 땐 밝은 배경에 어울리는 로고를, 어두운 테마일 땐 기존 로고를 쓴다.
+  // theme.js가 사용자가 버튼으로 직접 고른 테마까지 감안해 판단해준다(없으면 시스템 설정).
   const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
-  const currentLogoHref = () => (lightSchemeQuery.matches ? 'logo-light.png' : 'logo.png');
+  const currentLogoHref = () => {
+    const effective = window.samTheme ? window.samTheme.effectiveTheme() : (lightSchemeQuery.matches ? 'light' : 'dark');
+    return effective === 'light' ? 'logo-light.png' : 'logo.png';
+  };
+
+  // gallery.html 링크를 열 때 이 노드의 이름(=제목)을 title 파라미터로 실어 보낸다.
+  // archive.md에 예전에 올라온 게시물도(admin.js가 title을 저장하기 전 것도) 열 때마다
+  // 항상 현재 이름으로 제목이 뜨게 하기 위해, 저장된 값에 기대지 않고 여기서 매번 채운다.
+  function withGalleryTitle(url, name) {
+    if (!url || !url.startsWith('gallery.html')) return url;
+    const [path, query = ''] = url.split('?');
+    const sp = new URLSearchParams(query);
+    sp.set('title', name);
+    return `${path}?${sp.toString()}`;
+  }
 
   // 클릭한 노드는 그 자리에 완전히 멈춰 세운다(나머지 노드는 계속 공전한다).
   const pausedNodes = new Set();
@@ -251,7 +271,7 @@
     return ((h >>> 0) % 10000) / 10000;
   }
   const ANGLE_JITTER = 0.8;       // 라디안, 약 ±23도 (형제가 정확히 균등 분배 각도에 딱 붙지 않도록)
-  const RADIUS_JITTER = 0.22;     // NODE_DY 대비 비율, 약 ±22%
+  const RADIUS_JITTER = 0.22;     // 기본 궤도 간격 대비 비율, 약 ±22%
 
   // 노드가 "자기 부모를 도는" 로컬 각도. 같은 부모를 둔 형제끼리 0~2π를 균등하게
   // 나눠 가지므로, 트리 전체에서 어느 위치에 있든 항상 부모를 완전히 한 바퀴
@@ -314,7 +334,7 @@
     const cy = absCy - parentAy;
     const r = Math.sqrt(cx * cx + cy * cy);
     if (r < 1e-6) return; // 중심으로 완전히 붕괴하는 것만 방지
-    d.y = Math.max(r, NODE_DY * 0.3);
+    d.y = Math.max(r, nodeGap(d) * 0.3);
     d.x = Math.atan2(cx, -cy);
   }
   function shiftCartesian(d, dCx, dCy) {
@@ -375,15 +395,16 @@
     root.each((d) => {
       const key = d.data.name + '-' + d.depth + '-' + (d.parent ? d.parent.data.name : '');
       const angleJitter = d.depth === 0 ? 0 : (hash01(key) - 0.5) * ANGLE_JITTER;
-      const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * NODE_DY * RADIUS_JITTER;
+      const gap = nodeGap(d); // depth 1(태양계)은 넉넉하게, depth 2 이상(위성/게시물)은 좁게
+      const radiusJitter = d.depth === 0 ? 0 : (hash01(key + '#r') - 0.5) * gap * RADIUS_JITTER;
       const rel = relevance(d);
-      const baseLocalRadius = NODE_DY * (1 - rel * RELEVANCE_SHRINK); // 자기 부모로부터의 거리(더는 루트 기준 누적이 아님)
+      const baseLocalRadius = gap * (1 - rel * RELEVANCE_SHRINK); // 자기 부모로부터의 거리(더는 루트 기준 누적이 아님)
       // 실제 태양계처럼 궤도 거리가 확실히 들쭉날쭉하도록, 노드마다 0.55~2.3배 사이의
       // 고정된(의사난수) 배율을 곱한다 — 그냥 미세한 흔들림(radiusJitter)만으로는 너무 밋밋하다.
       const orbitTier = 0.55 + hash01(key + '#tier') * 1.75;
       const localAngle = siblingAngle(d) + angleJitter; // 형제끼리 부모 둘레에 고르게 분배 + 미세한 각도 흔들림
       // depth 1(태양 바로 다음)은 큰 로고 이미지와 겹치지 않도록 최소 거리를 더 넉넉히 둔다.
-      const minRadius = d.depth === 1 ? ROOT_CLEARANCE : NODE_DY * 0.4;
+      const minRadius = d.depth === 1 ? ROOT_CLEARANCE : gap * 0.4;
       const localRadius = d.depth === 0 ? 0 : Math.max(baseLocalRadius * orbitTier + radiusJitter, minRadius);
 
       // 펼쳐서 하위 노드를 보여주는 중인 노드는 자기 부모(=태양계)에서 멀리 끌려나와,
@@ -458,7 +479,7 @@
     function activateNode(d) {
       markUpdateSeen(d.data.name);
       if (d.data.url) {
-        window.open(d.data.url, '_blank', 'noopener');
+        window.open(withGalleryTitle(d.data.url, d.data.name), '_blank', 'noopener');
         return;
       }
       const willExpand = !d.children && !!d._children;
@@ -718,7 +739,7 @@
   function renderListHTML(node, depth) {
     if (!node.children || node.children.length === 0) {
       return node.url
-        ? `<li><a href="${node.url}" target="_blank" rel="noopener">${node.name}</a></li>`
+        ? `<li><a href="${withGalleryTitle(node.url, node.name)}" target="_blank" rel="noopener">${node.name}</a></li>`
         : `<li>${node.name}</li>`;
     }
     const tag = headingTagFor(depth);
