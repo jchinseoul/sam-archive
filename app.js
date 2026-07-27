@@ -7,7 +7,7 @@
 (async () => {
   // ---------- 0. 설정값 ----------
   const RADIUS = 11;                 // 원 크기 (더 크게)
-  const NODE_DY = 130;                // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
+  const NODE_DY = 95;                 // 부모-자식 간 반지름 간격(=하위 노드 간 궤도 간격)
   const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
   const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
@@ -699,10 +699,10 @@
     });
   }
 
-  // ---------- 5. 리스트 보기 (기본값) / 마인드맵 보기 토글 ----------
-  // 마인드맵(SVG)은 순전히 그림이라 키보드·스크린 리더로는 사실상 조작이 안 된다.
-  // 실제 <a href> 링크와 <h2>~<h5> 제목 구조를 가진 리스트 뷰를 기본으로 보여주고,
-  // 마인드맵은 원하는 사람만 눌러서 보는 보조 뷰로 둔다.
+  // ---------- 5. 마인드맵(기본값) / 리스트 보기 토글 ----------
+  // 마인드맵(SVG)은 순전히 그림이라 키보드·스크린 리더로는 사실상 조작이 안 되므로,
+  // 실제 <a href> 링크와 <h2>~<h5> 제목 구조를 가진 리스트 뷰도 함께 만들어 두고
+  // "리스트로 보기" 버튼으로 언제든 전환할 수 있게 한다.
   const HEADING_TAGS = ['h2', 'h3', 'h4', 'h5', 'h6'];
   function headingTagFor(depth) {
     return HEADING_TAGS[Math.min(depth, HEADING_TAGS.length - 1)];
@@ -723,9 +723,8 @@
 
   const treeEl = document.getElementById('tree');
   const listToggle = document.getElementById('listToggle');
-  // 다른 페이지의 로고/뒤로가기 링크가 index.html#mindmap 형태로 들어오면
-  // 리스트 보기 대신 마인드맵을 바로 보여준다.
-  let showingList = location.hash !== '#mindmap';
+  // 링크로 들어오면 항상 마인드맵을 바로 보여준다.
+  let showingList = false;
   function applyViewState() {
     // SVG 요소는 hidden 프로퍼티가 속성으로 반영되지 않아 style.display로 직접 제어
     treeEl.style.display = showingList ? 'none' : '';
