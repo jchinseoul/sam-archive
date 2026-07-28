@@ -14,17 +14,12 @@
   const NODE_DY_INNER = 45;           // depth 2 이상(위성/게시물)의 부모-자식 간 반지름 간격
   const nodeGap = (d) => (d.depth === 1 ? NODE_DY_OUTER : NODE_DY_INNER);
   const ROOT_CLEARANCE = 85;          // 태양(루트) 로고와 겹치지 않도록 depth 1 노드에게 주는 최소 거리
-  const COLOR_TOP = '#3f7d4f';        // 맨 위(뿌리/호수) — 초록 계열
-  const COLOR_BOTTOM = '#7a4a25';     // 맨 아래(게시물 리프) — 갈색 계열
   const MAX_DEPTH = 3;                // 호수(1) → 유형(2) → 게시물(3)
   const INITIAL_VISIBLE_DEPTH = 0;    // 처음엔 중심 글자(루트)만 보여주고, 클릭하면 가지가 뻗어나옴
   const PLANET_R_MIN = 2;             // 콘텐츠가 적은(리프) 노드의 "행성" 반지름
   const PLANET_R_MAX = 9;             // 콘텐츠가 많은(하위 항목이 많은) 노드의 "행성" 반지름
   const ORBIT_ANGULAR_K = 8;          // 공전 속도 상수. 반지름(y)이 작을수록(안쪽 궤도) 더 빠르게 돈다
   const FOCUS_DISTANCE_BOOST = 300;   // 펼쳐진 노드를 자기 부모(태양계)로부터 이만큼 더 끌어내 놓는다
-
-  const colorScale = d3.interpolateRgb(COLOR_TOP, COLOR_BOTTOM);
-  const colorOf = (d) => colorScale(Math.min(d.depth / MAX_DEPTH, 1));
 
   // 배경이 흰색(밝은 테마)일 땐 밝은 배경에 어울리는 로고를, 어두운 테마일 땐 기존 로고를 쓴다.
   // theme.js가 사용자가 버튼으로 직접 고른 테마까지 감안해 판단해준다(없으면 시스템 설정).
@@ -525,14 +520,6 @@
         }
       });
 
-    // 부모까지 이어지는 가지(선). 각 노드의 <g> 안에 로컬 좌표(0,0 → 부모 방향)로 그려서,
-    // 노드가 이동/회전할 때 별도 계산 없이 함께 따라오게 한다.
-    nodeEnter.filter((d) => d.depth > 0).insert('line', ':first-child')
-      .attr('class', 'link')
-      .attr('stroke', (d) => colorOf(d))
-      .attr('x1', 0).attr('y1', 0)
-      .attr('x2', 0).attr('y2', 0);
-
     // 가지 끝(루트 제외)을 "행성"처럼 그린다. 하위 콘텐츠가 많을수록 크게, 실제 태양계
     // 행성 색에 가깝게, 그리고 밝게 빛난다.
     nodeEnter.filter((d) => d.depth > 0).append('circle')
@@ -564,11 +551,6 @@
     nodeMerge.attr('aria-expanded', (d) => (d.data.url ? null : String(Boolean(d.children))));
     nodeMerge.transition().duration(TRANSITION_MS)
       .attr('transform', nodeTransform);
-    nodeMerge.select('line.link')
-      .style('stroke', (d) => colorOf(d))
-      .transition().duration(TRANSITION_MS)
-      .attr('x2', (d) => -cartesianX(d))
-      .attr('y2', (d) => -cartesianY(d));
     nodeMerge.select('circle.glow-tip')
       .style('fill', (d) => planetColorOf(d))
       .transition().duration(TRANSITION_MS)
@@ -629,9 +611,6 @@
     });
     computeAbsolutePositions();
     g.selectAll('g.node').attr('transform', nodeTransform);
-    g.selectAll('line.link')
-      .attr('x2', (d) => -cartesianX(d))
-      .attr('y2', (d) => -cartesianY(d));
     g.selectAll('circle.orbit-ring')
       .attr('cx', (d) => absX(d.parent))
       .attr('cy', (d) => absY(d.parent));

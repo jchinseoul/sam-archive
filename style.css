@@ -165,12 +165,6 @@ main {
   pointer-events: none;
 }
 
-.link {
-  fill: none;
-  stroke-width: 1px;
-  opacity: .45;
-}
-
 .node circle {
   transition: r .15s ease;
 }
